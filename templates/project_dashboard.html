@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ source_project.project_name }} Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <div class="app-sidebar">
+      <header class="dashboard-header">
+        <h1>{{ source_project.project_name }}</h1>
+        <p>Path: {{ source_project.project_path }}</p>
+      </header>
+
+      <div class="dashboard-tabs">
+        <button id="nav-tab-queries" class="tab-btn active" onclick="showNavTab('queries')">Queries</button>
+        <button id="nav-tab-files" class="tab-btn" onclick="showNavTab('files')">Files</button>
+      </div>
+
+      <!-- Queries Tab Content -->
+      <div id="nav-queries" class="dashboard-tab-content active">
+        <h2>Recent Queries</h2>
+        <ul class="list-unstyled">
+          {% for q in query_history %}
+            <li><a href="{{ url_for('query_detail', query_id=q.id) }}">{{ q.input_query }}</a></li>
+          {% endfor %}
+        </ul>
+        <hr>
+        <h2>New Query</h2>
+        <!-- Ensure this form POSTs to the project_dashboard route -->
+        <form class="query-form" action="{{ url_for('project_dashboard') }}" method="POST">
+          <div class="form-group">
+            <textarea name="input_query" rows="3" placeholder="Enter your query" class="form-control" required></textarea>
+          </div>
+          <div class="form-group">
+            <select name="client_type" class="form-select">
+              <option value="google">Google</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="dsv3" selected>DeepSeek (DSV3)</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary">Submit Query</button>
+        </form>
+      </div>
+
+      <!-- Files Tab Content -->
+      <div id="nav-files" class="dashboard-tab-content">
+        <!-- Refresh Button -->
+        <form id="refreshForm" action="{{ url_for('refresh_project') }}" method="POST" style="display:inline;">
+            <button type="submit" class="btn btn-warning btn-sm refresh-btn">Refresh Project Status</button>
+        </form>
+        <hr>
+        <h2>Generate/Update Summaries</h2>
+        <!-- Form for generating/updating summaries -->
+        <form action="{{ url_for('summarize_project') }}" method="POST">
+          <div class="form-group">
+            <label for="client_type_summarize" class="form-label">LLM Client:</label>
+            <select name="client_type" id="client_type_summarize" class="form-select">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="dsv3" selected>DSV3</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+          <!-- Button for Full Scan -->
+          <button type="submit" name="only_modified" value="false" class="btn btn-success">Generate Full Summary</button>
+          <!-- Button specifically for updating modified files -->
+          {% if summary_status.status == 'needs_update' %}
+            <button type="submit" name="only_modified" value="true" class="btn btn-warning" style="margin-top: 5px;">Update Modified Files Only</button>
+          {% endif %}
+        </form>
+        <hr>
+        <a href="{{ url_for('project_files') }}" class="btn btn-secondary btn-sm">Edit File Selection</a>
+        <hr>
+        <ul id="file-list-sidebar" class="list-unstyled"></ul>
+      </div>
+
+      <!-- Hidden container for project summary -->
+      <div id="hidden-project-summary" class="d-none">
+        {{ summary.project_summary }}
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="app-content">
+      <!-- Status Message Area -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category or 'info' }}" role="alert">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <!-- Display Summary Status -->
+      <div class="summary-status-display" style="padding: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid #ddd; background-color: #f9f9f9;">
+        <strong>Summary Status:</strong>
+        {% if summary_status.status == 'up_to_date' %}
+          <span style="color: green;">✓ Up-to-date</span> (Last summarized: {{ summary_status.last_summarized or 'N/A' }})
+        {% elif summary_status.status == 'needs_update' %}
+          <span style="color: orange;">⚠ Needs Update</span> - {{ summary_status.message }}
+        {% elif summary_status.status == 'not_summarized' %}
+          <span style="color: red;">✗ Not Summarized</span> - {{ summary_status.message }}
+        {% else %}
+          <span>{{ summary_status.message }}</span>
+        {% endif %}
+        <span style="margin-left: 15px;">Files in Summary: {{ summary_status.file_count | default(summary.file_count, 0) }}</span>
+      </div>
+
+      <div class="dashboard-stats">
+        <h1>Code Summary</h1>
+        <input type="text" id="search-input" placeholder="Search files..." class="form-control search-input">
+        <div class="stat-items">
+          <div id="fileCount" class="stat-item"></div>
+          <div id="totalLines" class="stat-item"></div>
+          <div id="excludedFilesCount" class="stat-item"></div>
+        </div>
+      </div>
+
+      <div class="dashboard-content-display" id="content-display">
+        {% if summary.project_summary %}
+          <h2>Project Overview</h2>
+          <div>{{ summary.project_summary | nl2br }}</div>
+        {% else %}
+          <p>No project summary available. Select a file from the sidebar or generate summaries.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Functions for summary display
+    function showProjectSummary() {
+      const projectSummary = document.getElementById('hidden-project-summary').innerHTML;
+      const contentDiv = document.getElementById('content-display');
+      if (projectSummary && projectSummary.trim().length > 0) {
+          contentDiv.innerHTML = `<h2>Project Overview</h2><div>${projectSummary.replace(/\\n/g, '<br>')}</div>`;
+      } else {
+          contentDiv.innerHTML = `<h2>Project Overview</h2><p>No project summary available.</p>`;
+      }
+    }
+
+    function showCombinedConciseSummaries() {
+      const contentDiv = document.getElementById('content-display');
+      let combinedSummary = '<h2>Combined Concise Summaries</h2>';
+      const files = summaryData.files || {};
+      const sortedPaths = Object.keys(files).sort();
+      if (sortedPaths.length === 0) {
+          combinedSummary += '<p>No file summaries available.</p>';
+      } else {
+          sortedPaths.forEach(path => {
+              const fileData = files[path];
+              combinedSummary += `
+                <div class="file-summary">
+                  <h3 class="file-path">${path}</h3>
+                  <div class="summary-box">
+                      <p>${(fileData.concise_summary || "N/A").replace(/\\n/g, '<br>')}</p>
+                  </div>
+                </div>
+                <hr>
+              `;
+          });
+      }
+      contentDiv.innerHTML = combinedSummary;
+    }
+
+    function showCombinedDetailedSummaries() {
+      const contentDiv = document.getElementById('content-display');
+      let combinedSummary = '<h2>Combined Detailed Summaries</h2>';
+      const files = summaryData.files || {};
+      const sortedPaths = Object.keys(files).sort();
+      if (sortedPaths.length === 0) {
+          combinedSummary += '<p>No file summaries available.</p>';
+      } else {
+          sortedPaths.forEach(path => {
+              const fileData = files[path];
+              combinedSummary += `
+                <div class="file-summary">
+                  <h3 class="file-path">${path}</h3>
+                  <div class="summary-box">
+                     <p>${(fileData.detailed_summary || "N/A").replace(/\\n/g, '<br>')}</p>
+                  </div>
+                </div>
+                <hr>
+              `;
+          });
+      }
+      contentDiv.innerHTML = combinedSummary;
+    }
+
+    function showFileSummary(fileData, path) {
+      const contentDiv = document.getElementById('content-display');
+      let fileSize = fileData.size || 0;
+      let sizeUnit = 'bytes';
+      if (fileSize > 1024) {
+        fileSize = (fileSize / 1024).toFixed(2);
+        sizeUnit = 'KB';
+      }
+      if (parseFloat(fileSize) > 1024 && sizeUnit === 'KB') {
+        fileSize = (parseFloat(fileSize) / 1024).toFixed(2);
+        sizeUnit = 'MB';
+      }
+      contentDiv.innerHTML = `
+        <div class="file-entry">
+            <h3 class="file-path">${path}</h3>
+            <p style="font-size: 0.9em; color: #555;">${fileData.lines || 0} lines | ${fileSize} ${sizeUnit}</p>
+            <div class="summary-box concise-box">
+              <div class="label">Concise Summary</div>
+              <p>${(fileData.concise_summary || "N/A").replace(/\\n/g, '<br>')}</p>
+            </div>
+            <div class="summary-box detailed-box">
+              <div class="label">Detailed Summary</div>
+              <p>${(fileData.detailed_summary || "N/A").replace(/\\n/g, '<br>')}</p>
+            </div>
+        </div>
+      `;
+    }
+
+    function showNavTab(tabName) {
+      document.querySelectorAll('.dashboard-tab-content').forEach(function(content) {
+        content.classList.remove('active');
+      });
+      document.querySelectorAll('.dashboard-tabs .tab-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+      });
+      document.getElementById('nav-' + tabName).classList.add('active');
+      document.getElementById('nav-tab-' + tabName).classList.add('active');
+    }
+
+    // Assume summary JSON is available as a JS object passed from server
+    const summaryData = {{ summary | tojson }};
+    
+    // Populate stats boxes
+    document.getElementById('fileCount').innerText = `Files: ${summaryData.file_count || 0}`;
+    document.getElementById('totalLines').innerText = `Lines: ${summaryData.total_lines || 0}`;
+    document.getElementById('excludedFilesCount').innerText = `Excluded: ${summaryData.excluded_files || 0}`;
+
+    // Populate file list in sidebar (Files tab)
+    const fileListSidebar = document.getElementById('file-list-sidebar');
+    fileListSidebar.innerHTML = '';
+    const files = summaryData.files || {};
+    const sortedPaths = Object.keys(files).sort();
+    if (sortedPaths.length > 0) {
+      sortedPaths.forEach(path => {
+        const li = document.createElement('li');
+        li.textContent = path;
+        li.title = path;
+        li.onclick = function() {
+          showFileSummary(files[path], path);
+        };
+        fileListSidebar.appendChild(li);
+      });
+    } else {
+      const li = document.createElement('li');
+      li.textContent = 'No files summarized.';
+      li.style.fontStyle = 'italic';
+      fileListSidebar.appendChild(li);
+    }
+
+    // Search functionality for file list
+    document.getElementById('search-input').addEventListener('keyup', function() {
+      const searchTerm = this.value.toLowerCase();
+      Array.from(fileListSidebar.children).forEach(item => {
+        if (item.onclick) {
+          const filePath = item.textContent.toLowerCase();
+          item.style.display = filePath.includes(searchTerm) ? '' : 'none';
+        } else {
+          item.style.display = searchTerm ? 'none' : '';
+        }
+      });
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Show project summary by default if available
+      if (summaryData.project_summary) {
+          showProjectSummary();
+      }
+      // Default to Queries tab on load
+      showNavTab('queries');
+    });
+  </script>
+</body>
+</html>

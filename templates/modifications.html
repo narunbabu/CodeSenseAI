@@ -1,0 +1,29 @@
+<!-- templates/modifications.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modifications History</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container-fluid"> <!-- Simple container -->
+        <h1>Modifications History</h1>
+        {% if modifications %}
+            <ul class="list-unstyled"> <!-- Use list-unstyled -->
+                {% for mod in modifications %}
+                    <li class="history-item"> <!-- Reuse history-item styling -->
+                        <a href="{{ url_for('modification_detail', modification_id=mod.id) }}">
+                            Modification {{ mod.id }} at {{ mod.timestamp.strftime('%Y-%m-%d %H:%M:%S') if mod.timestamp else 'N/A' }}
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No modifications recorded yet.</p>
+        {% endif %}
+        <a href="{{ url_for('project_dashboard') }}" class="btn btn-secondary mt-3">Back to Dashboard</a>
+    </div>
+</body>
+</html>

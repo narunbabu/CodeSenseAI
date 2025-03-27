@@ -1,0 +1,47 @@
+<!-- templates/confirm_prompt.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm Modification Prompt</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        #loading-indicator { display: none; /* ... other styles */ }
+        /* ... diff styles ... */
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1>Confirm Modification Prompt</h1>
+        <p>Review the prompt that will be sent to the LLM...</p>
+        <pre>{{ prompt }}</pre> <!-- This is prompt_display -->
+
+        <!-- Form points to generate_modifications -->
+        <form id="generate-form" action="{{ url_for('generate_modifications', query_id=query_id) }}" method="POST" style="display: inline-block;">
+            <button id="generate-button" type="submit" class="btn btn-primary">Generate Modifications</button>
+        </form>
+
+        <!-- Cancel Form/Button -->
+        <form action="{{ url_for('cancel_modification', query_id=query_id) }}" method="POST" style="display: inline-block; margin-left: 10px;">
+             <button type="submit" class="btn btn-secondary">Cancel</button>
+        </form>
+        <!-- Or use a simple link if GET is okay for cancel -->
+        <!-- <a href="{{ url_for('cancel_modification', query_id=query_id) }}" class="btn btn-secondary mt-3">Cancel</a> -->
+
+
+        <div id="loading-indicator">Generating modifications... Please wait.</div>
+    </div>
+    <script>
+        // ... (JavaScript for loading indicator remains the same) ...
+        const form = document.getElementById('generate-form');
+        const button = document.getElementById('generate-button');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        form.addEventListener('submit', function() {
+            loadingIndicator.style.display = 'block';
+            button.disabled = true;
+            button.innerText = 'Generating...';
+        });
+    </script>
+</body>
+</html>

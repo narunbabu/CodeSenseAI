@@ -1,0 +1,45 @@
+<!-- templates/modification_detail.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modification Detail</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container-fluid"> <!-- Simple container -->
+        <h1>Modification Detail #{{ modification.id }}</h1>
+
+        <div class="detail-section">
+            <div class="detail-label">Associated Query:</div>
+            <div class="detail-value">{{ query.input_query }}</div>
+
+            <div class="detail-label">Timestamp:</div>
+            <div class="detail-value">{{ modification.timestamp.strftime('%Y-%m-%d %H:%M:%S') if modification.timestamp else 'N/A' }}</div>
+        </div>
+
+        <div class="detail-section">
+            <h2>Files Modified:</h2>
+            {% if modification.files_modified %}
+                <ul class="list-unstyled">
+                    {% for file in modification.files_modified %}
+                        <li class="history-item"> <!-- Reuse history-item styling -->
+                            <span style="flex-grow: 1;"> <!-- Span to allow flex grow -->
+                                <span class="file-path" style="font-size: 0.9em; padding: 0.1rem 0.4rem; margin-right: 0.5rem;">{{ file.file_path }}</span> - {{ file.status }}: {{ file.message }}
+                            </span>
+                            <form action="{{ url_for('revert_file', modification_id=modification.id, file_path=file.file_path) }}" method="POST" class="form-inline"> <!-- Use form-inline -->
+                                <button type="submit" class="btn btn-warning btn-sm">Revert</button> <!-- Use btn classes -->
+                            </form>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No file modification details available.</p>
+            {% endif %}
+        </div>
+
+        <a href="{{ url_for('modifications') }}" class="btn btn-secondary">Back to Modifications</a>
+    </div>
+</body>
+</html>

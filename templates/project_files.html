@@ -1,0 +1,174 @@
+<!-- templates/project_files.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project File Selection</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="container-fluid"> <!-- Simple container -->
+      <h1>File Selection for Project: {{ source_project.project_name }}</h1>
+      <p>Select files to include in your project analysis. Unselected files will be excluded.</p>
+
+      <div class="file-selection-controls"> <!-- Controls container -->
+        <button id="selectAll" class="btn btn-light btn-sm">Select All</button>
+        <button id="deselectAll" class="btn btn-light btn-sm">Deselect All</button>
+        <button id="toggleFolders" class="btn btn-light btn-sm">Expand/Collapse All</button>
+      </div>
+
+      <!-- Combined form: updating file selection and/or generating summary -->
+      <form method="POST">
+        <div class="file-tree"> <!-- File tree container -->
+          {% macro render_tree(tree, current_path='') %}
+            <ul class="list-unstyled"> <!-- Use list-unstyled -->
+              {% for node in tree %}
+                {% set node_path = current_path + '/' + node.name if current_path else node.name %}
+                {% if node.type == 'folder' %}
+                  <li class="folder">
+                     <span class="folder-toggle">▶</span>
+                     <label>
+                       <!-- Folder checkbox uses path for potential JS targeting -->
+                       <input type="checkbox" class="folder-checkbox" data-folder-path="{{ node_path }}">
+                       <span class="folder-name">{{ node.name }}/</span>
+                     </label>
+                     <div class="folder-contents" style="display: none;"> <!-- Start collapsed -->
+                       {{ render_tree(node.children, node_path) }}
+                     </div>
+                  </li>
+                {% else %}
+                  <li class="file">
+                    <label>
+                      <input type="checkbox" name="selected_files" class="file-checkbox" value="{{ node.relative_path }}" {% if node.checked %}checked{% endif %}>
+                      <span class="file-name">{{ node.relative_path }}</span>
+                    </label>
+                  </li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          {% endmacro %}
+          {{ render_tree(file_tree) }}
+        </div>
+
+        <!-- Buttons for saving file selection -->
+        <button type="submit" formaction="{{ url_for('update_file_selection') }}" class="btn btn-primary">Save Selection and Continue</button>
+
+        <!-- Section for summary generation -->
+        <div class="summary-generation"> <!-- Summary generation container -->
+          <label for="client_type" class="form-label">Select LLM Client:</label>
+          <select name="client_type" id="client_type" class="form-select" style="width: auto; display: inline-block;"> <!-- Inline style for width -->
+            <option value="google">Google</option>
+            <option value="openai">OpenAI</option>
+            <option value="ollama">Ollama</option>
+            <option value="dsv3" selected>DSV3</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+          <button type="submit" formaction="{{ url_for('summarize_project') }}" class="btn btn-success">Generate Summary</button>
+        </div>
+      </form>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Toggle folder expansion
+      document.querySelectorAll('.folder-toggle').forEach(toggle => {
+        toggle.addEventListener('click', function() {
+          const folderContents = this.parentElement.querySelector('.folder-contents');
+          const isHidden = folderContents.style.display === 'none' || folderContents.style.display === '';
+          folderContents.style.display = isHidden ? 'block' : 'none';
+          this.textContent = isHidden ? '▼' : '▶';
+        });
+      });
+
+      // Handle folder checkboxes to select/deselect all contained files/subfolders
+      document.querySelectorAll('.folder-checkbox').forEach(folderCheckbox => {
+        folderCheckbox.addEventListener('change', function() {
+          const folderItem = this.closest('.folder');
+          // Select all checkboxes within this folder's contents div
+          const childCheckboxes = folderItem.querySelectorAll('.folder-contents input[type="checkbox"]');
+          childCheckboxes.forEach(childBox => {
+            childBox.checked = this.checked;
+            // If it's a sub-folder checkbox, trigger its change event recursively
+            if (childBox.classList.contains('folder-checkbox')) {
+                childBox.dispatchEvent(new Event('change'));
+            }
+          });
+        });
+      });
+
+      // Update folder checkbox state based on children
+      function updateFolderCheckboxes() {
+          document.querySelectorAll('.folder').forEach(folder => {
+              const folderCheckbox = folder.querySelector(':scope > label > .folder-checkbox');
+              const contents = folder.querySelector(':scope > .folder-contents');
+              const childCheckboxes = contents.querySelectorAll('input[type="checkbox"]');
+              if (childCheckboxes.length > 0) {
+                  const allChecked = Array.from(childCheckboxes).every(cb => cb.checked);
+                  const someChecked = Array.from(childCheckboxes).some(cb => cb.checked);
+                  folderCheckbox.checked = allChecked;
+                  folderCheckbox.indeterminate = !allChecked && someChecked;
+              } else {
+                  folderCheckbox.indeterminate = false; // No children, not indeterminate
+                  // Optional: Base folder state on its own initial state if needed
+              }
+          });
+      }
+
+      // Add event listeners to file checkboxes to update parent folders
+       document.querySelectorAll('.file-checkbox').forEach(fileCheckbox => {
+           fileCheckbox.addEventListener('change', function() {
+               // Traverse up the DOM to update parent folder checkboxes
+               let currentElement = this.closest('.folder');
+               while (currentElement) {
+                   updateFolderCheckboxes(); // Re-evaluate all folders might be simpler
+                   // Or target specific parent:
+                   // const parentFolderCheckbox = currentElement.querySelector(':scope > label > .folder-checkbox');
+                   // if (parentFolderCheckbox) updateSingleFolderCheckbox(parentFolderCheckbox);
+                   currentElement = currentElement.parentElement.closest('.folder');
+               }
+                updateFolderCheckboxes(); // Final check after propagation
+           });
+       });
+
+      // Initial check on load
+      updateFolderCheckboxes();
+
+
+      // Select all button
+      document.getElementById('selectAll').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.file-tree input[type="checkbox"]').forEach(checkbox => {
+          checkbox.checked = true;
+          checkbox.indeterminate = false; // Clear indeterminate state
+        });
+      });
+
+      // Deselect all button
+      document.getElementById('deselectAll').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.file-tree input[type="checkbox"]').forEach(checkbox => {
+          checkbox.checked = false;
+          checkbox.indeterminate = false; // Clear indeterminate state
+        });
+      });
+
+      // Toggle folders button
+      document.getElementById('toggleFolders').addEventListener('click', function(e) {
+        e.preventDefault();
+        const folderContents = document.querySelectorAll('.folder-contents');
+        // Check if *any* folder is currently expanded (display=block)
+        const anyExpanded = Array.from(folderContents).some(el => el.style.display === 'block');
+        const expandAll = !anyExpanded; // If none are expanded, expand all. Otherwise, collapse all.
+
+        folderContents.forEach(content => {
+          content.style.display = expandAll ? 'block' : 'none';
+        });
+        document.querySelectorAll('.folder-toggle').forEach(toggle => {
+          toggle.textContent = expandAll ? '▼' : '▶';
+        });
+      });
+    });
+  </script>
+</body>
+</html>

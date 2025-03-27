@@ -1,0 +1,50 @@
+<!-- templates/preview_modification.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview Modifications</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Optional: Add syntax highlighting CSS for diff -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <style>
+        /* Simple Diff Highlighting */
+        .diff-added { background-color: #e6ffed; color: #22863a; }
+        .diff-removed { background-color: #ffeef0; color: #b31d28; }
+        .diff-changed-marker { background-color: #fffab8; } /* Optional for '? ' lines */
+        pre code.diff { white-space: pre; } /* Ensure whitespace is preserved */
+    </style>
+</head>
+<body>
+    <div class="container-fluid"> <!-- Simple container -->
+        <h1>Preview Modifications</h1>
+        {% for mod in modifications %}
+            <div class="diff-view"> <!-- Container for each file diff -->
+                <h2>{{ mod.file_path }}</h2>
+                <h3>Diff:</h3>
+                <!-- Use the pre-generated highlighted_diff -->
+                <pre><code class="diff">{{ mod.highlighted_diff|safe }}</code></pre>
+            </div>
+            <hr>
+        {% endfor %}
+
+        <form action="{{ url_for('accept_modifications', query_id=query_id) }}" method="POST">
+            <!--
+                IMPORTANT FIX:
+                modifications_json is ALREADY a JSON string from the backend.
+                Using |tojson would double-escape it.
+                Use |safe to prevent HTML escaping of quotes inside the JSON string.
+            -->
+            <input type="hidden" name="modifications_json" value='{{ modifications_json | safe }}'>
+            <button type="submit" class="btn btn-success">Accept Modifications</button>
+            <!-- Link Cancel button to the cancel route -->
+            <a href="{{ url_for('cancel_modification', query_id=query_id) }}" class="btn btn-danger">Cancel</a>
+        </form>
+    </div>
+
+    <!-- Optional: Add highlight.js library (if needed for other code blocks, not strictly for diff) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script> 
+     <script>hljs.highlightAll();</script>
+</body>
+</html>

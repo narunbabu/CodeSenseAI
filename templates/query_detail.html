@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Query Detail</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <div class="app-sidebar">
+      <h3>Query History</h3>
+      <ul class="list-unstyled">
+        {% for q in queries %}
+          <li>
+            <a href="{{ url_for('query_detail', query_id=q.id) }}" title="{{ q.input_query }}">
+              {{ q.input_query[:40] }}{% if q.input_query|length > 40 %}...{% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+      <hr>
+      <a href="{{ url_for('project_dashboard') }}" class="btn btn-secondary btn-sm">Back to Dashboard</a>
+      <a href="{{ url_for('home') }}" class="btn btn-light btn-sm">Project Home</a>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="app-content">
+      <header>
+        <h1>Query Details</h1>
+        <p>Review the query and its parsed response.</p>
+      </header>
+
+      <!-- Query Details Section -->
+      <div class="detail-section">
+        <div class="detail-label">Query:</div>
+        <div class="detail-value">{{ entry.input_query }}</div>
+
+        <div class="detail-label">LLM Client:</div>
+        <div class="detail-value">{{ entry.client_type }}</div>
+
+        <div class="detail-label">Response Time:</div>
+        <div class="detail-value">{{ "%.2f"|format(entry.response_time) }} seconds</div>
+
+        <div class="detail-label">Timestamp:</div>
+        <div class="detail-value">
+
+          {# Access the timestamp using dictionary key notation #}
+          {% set ts = entry.get('timestamp') %}
+          {# Check if ts exists and has the strftime method (meaning it's a datetime object) #}
+
+          {{ entry.timestamp|format_datetime }}
+        </div>
+      </div>
+
+      <!-- Parsed Response Section -->
+      <div class="detail-section">
+        <h2>Parsed Response</h2>
+        <div id="parsedResponseContainer">
+          <!-- Parsed content will be dynamically inserted here -->
+        </div>
+      </div>
+
+      <!-- Code Modification Form Section -->
+      <div class="detail-section">
+        <h2>Code Modification</h2>
+        <form method="POST" action="{{ url_for('modify_files', query_id=entry.id) }}">
+          <div class="form-group">
+            <label for="client_type_modify" class="form-label">Select LLM for Code Modification:</label>
+            <select class="form-select" id="client_type_modify" name="client_type">
+              <option value="google" {% if entry.client_type == 'google' %}selected{% endif %}>Google AI</option>
+              <option value="openai" {% if entry.client_type == 'openai' %}selected{% endif %}>OpenAI</option>
+              <option value="anthropic" {% if entry.client_type == 'anthropic' %}selected{% endif %}>Anthropic</option>
+              <option value="dsv3" {% if entry.client_type == 'dsv3' %}selected{% endif %}>DeepSeek (DSV3)</option>
+              <option value="ollama" {% if entry.client_type == 'ollama' %}selected{% endif %}>Ollama</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-warning">Generate Modification Prompt</button>
+          <small class="form-text text-muted d-block mt-2">
+            This will generate a prompt based on the instructions above. You will confirm before applying changes.
+          </small>
+        </form>
+      </div>
+
+      <!-- Raw Response Toggle Section -->
+      <div class="detail-section">
+        <button id="toggleRawBtn" class="btn btn-light">Show Raw Response</button>
+        <div id="rawResponseContainer" class="d-none">
+          <h2>Raw Response</h2>
+          <pre>{{ entry.raw_response }}</pre>
+        </div>
+      </div>
+    </div> <!-- End app-content -->
+  </div> <!-- End app-layout -->
+
+  <!-- Include Marked.js for Markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    // Parse the response from the server (injected via Jinja2)
+    const parsedResponseData = {{ entry.response | default('[]') | tojson }}; // Default to empty list
+    const container = document.getElementById('parsedResponseContainer');
+    container.innerHTML = ''; // Clear container
+
+    if (Array.isArray(parsedResponseData) && parsedResponseData.length > 0) {
+      // Loop through each file entry and render the details
+      parsedResponseData.forEach(item => {
+          // Basic check if item is a valid dictionary with expected keys
+          if (typeof item !== 'object' || item === null || !item.file_path) {
+              console.warn("Skipping invalid item in parsed response:", item);
+              return;
+          }
+
+          const entryDiv = document.createElement('div');
+          entryDiv.className = 'file-entry'; // Use file-entry class
+
+          // File Path
+          const pathElem = document.createElement('h3');
+          pathElem.className = 'file-path'; // Use file-path class
+          pathElem.innerText = item.file_path || 'Unknown File';
+          entryDiv.appendChild(pathElem);
+
+          // Concise Summary (how file is related) - Render using Marked.js
+          if (item.concise_summary) {
+              const conciseDiv = document.createElement('div');
+              conciseDiv.className = 'summary-box'; // Use summary-box class
+              const conciseLabel = document.createElement('div');
+              conciseLabel.className = 'label';
+              conciseLabel.innerText = 'Relevance to Query:';
+              const conciseContent = document.createElement('div');
+              try {
+                   conciseContent.innerHTML = marked.parse(item.concise_summary);
+              } catch (e) {
+                   console.error("Error parsing concise_summary markdown:", e);
+                   conciseContent.innerText = item.concise_summary; // Fallback to plain text
+              }
+              conciseDiv.appendChild(conciseLabel);
+              conciseDiv.appendChild(conciseContent);
+              entryDiv.appendChild(conciseDiv);
+          } else {
+              const noConcise = document.createElement('p');
+              noConcise.innerHTML = '<em>No relevance summary provided.</em>';
+              noConcise.style.marginBottom = 'var(--spacing-unit)';
+              entryDiv.appendChild(noConcise);
+          }
+
+          // Instructions to Modify - Render using Marked.js
+           if (item.instructions_to_modify) {
+              const instructionDiv = document.createElement('div');
+              instructionDiv.className = 'summary-box'; // Use summary-box class
+              const instructionLabel = document.createElement('div');
+              instructionLabel.className = 'label';
+              instructionLabel.innerText = 'Modification Instructions:';
+              const instructionContent = document.createElement('div');
+              try {
+                   instructionContent.innerHTML = marked.parse(item.instructions_to_modify);
+              } catch (e) {
+                   console.error("Error parsing instructions_to_modify markdown:", e);
+                   instructionContent.innerText = item.instructions_to_modify; // Fallback to plain text
+              }
+              instructionDiv.appendChild(instructionLabel);
+              instructionDiv.appendChild(instructionContent);
+              entryDiv.appendChild(instructionDiv);
+           } else {
+              const noInstruction = document.createElement('p');
+              noInstruction.innerHTML = '<em>No modification instructions provided.</em>';
+              noInstruction.style.marginBottom = 'var(--spacing-unit)';
+              entryDiv.appendChild(noInstruction);
+           }
+
+          container.appendChild(entryDiv);
+      });
+    } else if (parsedResponseData && parsedResponseData.error) {
+      // Handle specific error structure if QueryHandler returns it
+      const errorMsg = document.createElement('p');
+      errorMsg.textContent = `Error processing response: ${parsedResponseData.error}`;
+      errorMsg.style.color = 'red';
+      errorMsg.style.fontStyle = 'italic';
+      container.appendChild(errorMsg);
+    } else {
+      // Handle case where response is empty or invalid
+      const noDataMsg = document.createElement('p');
+      noDataMsg.textContent = 'No relevant files or instructions were identified by the LLM, or the response could not be parsed.';
+      noDataMsg.style.fontStyle = 'italic';
+      container.appendChild(noDataMsg);
+    }
+
+    // Toggle raw response display
+    const toggleBtn = document.getElementById('toggleRawBtn');
+    const rawResponseContainer = document.getElementById('rawResponseContainer');
+    if (toggleBtn && rawResponseContainer) {
+      toggleBtn.addEventListener('click', function() {
+        const isHidden = rawResponseContainer.classList.contains('d-none');
+        if (isHidden) {
+          rawResponseContainer.classList.remove('d-none');
+          toggleBtn.innerText = 'Hide Raw Response';
+          toggleBtn.classList.remove('btn-light');
+          toggleBtn.classList.add('btn-secondary');
+        } else {
+          rawResponseContainer.classList.add('d-none');
+          toggleBtn.innerText = 'Show Raw Response';
+          toggleBtn.classList.remove('btn-secondary');
+          toggleBtn.classList.add('btn-light');
+        }
+      });
+    }
+  </script>
+</body>
+</html>

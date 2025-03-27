@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+
+# Node modules (if any)
+node_modules/
+
+# Git folder (usually not needed to ignore, but included per your snippet)
+.git/
+
+# Custom folders to exclude
+projects/
+
+
+# Flask specific files (logs, instance folder)
+instance/
+*.log
+
+# Environment variables
+.env
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# PyInstaller
+*.spec

@@ -1,0 +1,46 @@
+<!-- templates/query.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Query</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container-fluid"> <!-- Simple container -->
+        <h1>Submit a Query for Code Modification</h1>
+        <form action="{{ url_for('query') }}" method="POST">
+            <div class="form-group">
+                <label for="input_query" class="form-label">Query:</label>
+                <textarea id="input_query" name="input_query" class="form-control" rows="5" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="client_type" class="form-label">LLM Client:</label>
+                <select id="client_type" name="client_type" class="form-select">
+                    <option value="google">Google</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="dsv3" selected>DSV3</option>
+                    <option value="anthropic">Anthropic</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Submit Query</button>
+        </form>
+
+        {% if history %}
+        <hr>
+        <h2>Previous Queries</h2>
+        <ul class="history-list">
+            {% for q in history %}
+                <li class="history-item">
+                    <a href="{{ url_for('query_detail', query_id=q.id) }}">{{ q.input_query }}</a>
+                    <!-- Optional: Add delete button here if needed -->
+                </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+         <a href="{{ url_for('project_dashboard') }}" class="btn btn-secondary mt-3">Back to Dashboard</a>
+    </div>
+</body>
+</html>

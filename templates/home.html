@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Home</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="app-layout"> <!-- Use app layout -->
+    <div class="app-sidebar"> <!-- Sidebar -->
+      <h2>Existing Projects</h2>
+      <ul class="list-unstyled"> <!-- Use list-unstyled -->
+        {% for project in projects %}
+          <li>
+            <a href="{{ url_for('select_project') }}?source_code_path={{ project.source_code_path }}&local_storage_path={{ project.local_storage_path }}">
+              {{ project.project_name }}
+            </a>
+            {% if project.has_summary %}
+              <span class="project-status has-summary">✓ Summary</span> <!-- Add has-summary class -->
+            {% else %}
+              <span class="project-status">No Summary</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+      <hr>
+      <h2>Create New Project</h2>
+      <form action="{{ url_for('select_project') }}" method="POST" id="projectForm">
+        <div class="form-group">
+          <label for="source_code_input" class="form-label">Enter Source Code Path:</label>
+          <div style="display: flex;"> <!-- Flex container for input and button -->
+              <input type="text" id="source_code_input" name="source_code_input" placeholder="Enter absolute source code path" class="form-control" required>
+              <button type="button" id="loadPathBtn" class="btn btn-secondary btn-sm">Load</button>
+          </div>
+          <!-- Hidden field to store the path that will be submitted -->
+          <input type="hidden" id="source_code_path" name="source_code_path">
+        </div>
+        <div class="form-group">
+          <label for="local_storage_path" class="form-label">Local Storage Path:</label>
+          <input type="text" id="local_storage_path" name="local_storage_path" value="./projects" class="form-control">
+        </div>
+        <!-- File tree preview area -->
+        <div id="fileTreePreview" class="d-none"> <!-- Use d-none utility class -->
+          <h2>Project Files Preview</h2>
+          <div id="fileTreeContainer"></div> <!-- Style applied via CSS -->
+          <button id="createProjectBtn" type="submit" class="btn btn-success d-none">Create Project</button> <!-- Use d-none -->
+          <button id="goToDashboardBtn" type="button" class="btn btn-primary d-none" onclick="window.location.href='{{ url_for('project_dashboard') }}'">Go to Dashboard</button> <!-- Use d-none -->
+        </div>
+      </form>
+    </div>
+    <div class="app-content"> <!-- Content Area -->
+      <h1>Welcome to the Code Summarization App</h1>
+      <p>Select an existing project from the sidebar or create a new project using the form.</p>
+      <p>
+        After selecting a project, you will be prompted to review and customize the list of processable files.
+        If a summary already exists, the app will display its status. Should any files be modified
+        without an updated summary, you will be given an option to generate summaries for those files only.
+      </p>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
