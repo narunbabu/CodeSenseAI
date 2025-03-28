@@ -505,8 +505,6 @@ HTML_COMBINED_REPORT_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-
-
 DEFAULT_EXCLUDES = [
     "node_modules", "vendor", "__pycache__", ".github", ".git", "venv", "env", "projects", "notused",
     "dist", "build", ".vscode", ".idea", ".DS_Store", "*.pyc", "*.pyo", "*.md", "yarn.lock","LICENSE",
