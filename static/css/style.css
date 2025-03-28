@@ -1,4 +1,5 @@
-/* code_summarizer/static/css/style.css */
+/* static/css/style.css */
+
 
 /* --- Variables --- */
 :root {
@@ -8,6 +9,7 @@
   --danger-color: #e74c3c; /* Red */
   --warning-color: #f39c12; /* Orange */
   --success-color: #2ecc71; /* Green */
+  --info-color: #3498db; /* Blue (same as primary) */
   --light-bg: #ecf0f1; /* Light Grey */
   --medium-bg: #f9f9f9; /* Off-white */
   --dark-bg: #2c3e50; /* Dark Blue/Grey */
@@ -34,15 +36,15 @@ body {
   line-height: 1.6;
   color: var(--text-color);
   background-color: var(--light-bg);
-  display: flex; /* Use flex for layout by default */
+  /* display: flex; Remove default flex here if using container-fluid/app-layout selectively */
   min-height: 100vh;
 }
 
 h1, h2, h3, h4, h5, h6 {
   color: var(--secondary-color);
   margin-top: 0;
-  margin-bottom: calc(var(--spacing-unit) * 0.5);
-  line-height: 1.2;
+  margin-bottom: calc(var(--spacing-unit) * 0.8); /* Adjusted margin */
+  line-height: 1.3;
 }
 
 h1 { font-size: 2em; }
@@ -73,6 +75,7 @@ pre {
   white-space: pre-wrap; /* Allow wrapping */
   word-wrap: break-word; /* Break long words */
   overflow-x: auto; /* Add scrollbar if needed */
+  font-size: 0.9em; /* Slightly smaller font for code */
 }
 
 ul {
@@ -95,7 +98,7 @@ hr {
 .app-layout {
   display: flex;
   width: 100%;
-  min-height: 100vh;
+  min-height: 100vh; /* Ensure layout takes full height */
 }
 
 .app-sidebar {
@@ -105,26 +108,42 @@ hr {
   padding: var(--spacing-unit);
   flex-shrink: 0; /* Prevent sidebar from shrinking */
   overflow-y: auto; /* Add scroll if content overflows */
+  height: 100vh; /* Make sidebar full height */
+  position: sticky; /* Keep sidebar visible when content scrolls */
+  top: 0;
 }
 
 .app-content {
   flex-grow: 1; /* Allow content to take remaining space */
   padding: var(--spacing-unit);
-  background-color: #fff;
+  /* background-color: #fff; Let container-fluid handle bg if nested */
   overflow-y: auto; /* Add scroll if content overflows */
+  /* Remove height: 100vh if app-layout manages height */
 }
 
-/* Container for pages without a sidebar */
+/* Container for pages without a sidebar, or wrapper within app-content */
 .container-fluid {
   width: 100%;
-  max-width: 1200px; /* Optional: constrain width */
+  max-width: 1400px; /* Wider max-width maybe? */
   margin: 0 auto;
   padding: var(--spacing-unit);
-  background-color: #fff; /* Give it a background */
-  border-radius: var(--border-radius);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  /* background-color: #fff; /* Give it a background if not inside app-content */
+  /* border-radius: var(--border-radius); */
+  /* box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); */
   margin-top: var(--spacing-unit); /* Add some top margin */
 }
+/* Adjustments if container-fluid is used INSIDE app-content */
+.app-content > .container-fluid {
+    margin-top: 0;
+    padding: 0; /* Remove padding if app-content already has it */
+    max-width: none; /* Allow it to fill app-content */
+    background-color: #fff; /* Ensure white background */
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    padding: var(--spacing-unit); /* Re-add padding inside */
+
+}
+
 
 /* --- Components --- */
 
@@ -218,12 +237,27 @@ hr {
     text-decoration: none;
 }
 
+.btn-info {
+    color: var(--text-light);
+    background-color: var(--info-color);
+    border-color: var(--info-color);
+}
+.btn-info:hover {
+    background-color: #2980b9; /* Darker blue */
+    border-color: #2980b9;
+    color: var(--text-light);
+    text-decoration: none;
+}
+
+
 .btn-link {
   font-weight: 400;
   color: var(--primary-color);
   text-decoration: none;
   background-color: transparent;
   border-color: transparent;
+  padding: 0; /* Remove padding for link-like appearance */
+  vertical-align: baseline; /* Align with text */
 }
 .btn-link:hover {
   text-decoration: underline;
@@ -277,6 +311,13 @@ textarea.form-control {
   resize: vertical;
 }
 
+.form-text { /* Style for help text below inputs */
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.875em;
+    color: #6c757d; /* Muted text color */
+}
+
 /* For inline forms or elements */
 .form-inline {
     display: inline-block;
@@ -300,489 +341,6 @@ textarea.form-control {
   padding: 0;
 }
 
-.app-sidebar li a {
-  color: var(--light-bg);
-  display: block; /* Make link take full width */
-  padding: 0.25rem 0;
-}
-.app-sidebar li a:hover {
-  color: var(--text-light);
-  text-decoration: none;
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.project-status {
-  font-size: 0.85em;
-  color: var(--warning-color);
-  margin-left: 0.5em;
-  font-style: italic;
-}
-.project-status.has-summary { /* Style for '✓ Summary' */
-    color: var(--success-color);
-    font-weight: bold;
-    font-style: normal;
-}
-
-/* File Tree */
-.file-tree {
-  font-family: var(--font-family-monospace);
-  margin: var(--spacing-unit) 0;
-  padding: var(--spacing-unit);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  background-color: var(--medium-bg);
-  max-height: 500px;
-  overflow-y: auto;
-}
-
-.file-tree ul {
-  list-style-type: none;
-  padding-left: var(--spacing-unit);
-  margin: 0;
-}
-
-.file-tree li {
-  margin: 0.25rem 0;
-  padding: 0.1rem 0;
-}
-
-.file-tree .folder > label,
-.file-tree .file > label {
-  cursor: pointer;
-  display: inline-flex; /* Align checkbox and text */
-  align-items: center;
-}
-
-.file-tree input[type="checkbox"] {
-  margin-right: 0.5em;
-  cursor: pointer;
-}
-
-.file-tree .folder-toggle {
-  display: inline-block;
-  width: 1.2em;
-  text-align: center;
-  cursor: pointer;
-  margin-right: 0.2em;
-  color: var(--secondary-color);
-  font-weight: bold;
-}
-
-.file-tree .folder-name {
-  font-weight: bold;
-  color: var(--secondary-color);
-}
-
-.file-tree .file-name {
-  color: var(--text-color);
-}
-
-.file-tree .folder-contents {
-  /* display: block; */ /* Initially shown, JS will hide */
-  padding-left: 0.5em; /* Indent contents slightly */
-}
-
-/* File Selection Controls */
-.file-selection-controls {
-  margin-bottom: var(--spacing-unit);
-  padding-bottom: var(--spacing-unit);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.file-selection-controls .btn {
-    background-color: var(--light-bg);
-    border-color: #ccc;
-    color: var(--text-color);
-}
-.file-selection-controls .btn:hover {
-    background-color: #e0e0e0;
-}
-
-/* Summary Generation Section */
-.summary-generation {
-  margin-top: var(--spacing-unit);
-  padding-top: var(--spacing-unit);
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-unit);
-  flex-wrap: wrap; /* Allow wrapping on smaller screens */
-}
-
-/* Dashboard Specific */
-.dashboard-header {
-  margin-bottom: var(--spacing-unit);
-}
-.dashboard-header p {
-  font-size: 0.9em;
-  color: var(--text-light);
-  opacity: 0.8;
-}
-
-.dashboard-tabs {
-  display: flex;
-  margin-bottom: var(--spacing-unit);
-}
-.dashboard-tabs .tab-btn {
-  flex: 1;
-  padding: 0.75rem;
-  background: #34495e; /* Slightly lighter than sidebar */
-  border: none;
-  color: var(--text-light);
-  cursor: pointer;
-  border-radius: var(--border-radius) var(--border-radius) 0 0;
-  border-bottom: 3px solid transparent;
-  transition: background-color 0.2s, border-color 0.2s;
-}
-.dashboard-tabs .tab-btn.active {
-  background: var(--accent-color);
-  border-bottom-color: var(--primary-color);
-  font-weight: bold;
-}
-.dashboard-tabs .tab-btn:not(.active):hover {
-  background: #4a627a;
-}
-
-.dashboard-tab-content {
-  display: none; /* Hidden by default */
-}
-.dashboard-tab-content.active {
-  display: block; /* Shown when active */
-}
-
-.dashboard-stats {
-  background: var(--light-bg);
-  padding: var(--spacing-unit);
-  border-radius: var(--border-radius);
-  margin-bottom: var(--spacing-unit);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-unit);
-  flex-wrap: wrap;
-}
-.dashboard-stats h1 {
-    margin: 0;
-    font-size: 1.3em;
-    flex-shrink: 0; /* Prevent title shrinking too much */
-}
-.dashboard-stats .search-input {
-    flex: 1 1 200px; /* Allow growing and shrinking, base width */
-    min-width: 150px;
-}
-.dashboard-stats .stat-items {
-    display: flex;
-    gap: 0.75rem;
-    font-size: 0.9em;
-    flex-wrap: wrap; /* Wrap stats if space is limited */
-}
-.dashboard-stats .stat-item {
-    background: #fff;
-    padding: 0.5rem 0.75rem;
-    border-radius: var(--border-radius);
-    border: 1px solid var(--border-color);
-    text-align: center;
-}
-
-.dashboard-content-display {
-  background: #fff;
-  padding: var(--spacing-unit);
-  border-radius: var(--border-radius);
-  border-left: 5px solid var(--primary-color);
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  min-height: 300px; /* Ensure it has some height */
-}
-.dashboard-content-display h2,
-.dashboard-content-display h3 {
-    margin-top: var(--spacing-unit); /* Add space above headings */
-}
-.dashboard-content-display h2:first-child,
-.dashboard-content-display h3:first-child {
-    margin-top: 0; /* No top margin for the very first heading */
-}
-
-.summary-links {
-    display: flex;
-    gap: 0.75rem;
-    margin-bottom: var(--spacing-unit);
-    flex-wrap: wrap;
-}
-.summary-links .btn-link {
-    cursor: pointer;
-    padding: 0.25rem 0; /* Minimal padding */
-    font-size: 0.9em;
-}
-
-/* Query History / List Styles */
-.history-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-.history-item {
-    margin-bottom: 0.75rem;
-    padding: 0.5rem;
-    background-color: var(--medium-bg);
-    border-radius: var(--border-radius);
-    border: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-}
-.history-item a {
-    text-decoration: none;
-    color: var(--text-color);
-    flex-grow: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.history-item a:hover {
-    color: var(--primary-color);
-}
-.history-item .delete-btn {
-    flex-shrink: 0; /* Prevent delete button from shrinking */
-}
-
-/* Query Detail Page */
-.detail-section {
-  margin-bottom: calc(var(--spacing-unit) * 1.5);
-  padding: var(--spacing-unit);
-  background-color: #fff;
-  border-radius: var(--border-radius);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-.detail-label {
-  font-weight: bold;
-  margin-bottom: 0.25rem;
-  color: var(--secondary-color);
-}
-.detail-value {
-  margin-bottom: var(--spacing-unit);
-}
-.detail-value pre { /* Style pre within value if needed */
-    margin-top: 0.5rem;
-}
-
-.file-entry {
-  margin-bottom: calc(var(--spacing-unit) * 1.5);
-  padding: var(--spacing-unit);
-  background-color: #fff;
-  border-radius: var(--border-radius);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border-left: 3px solid var(--accent-color);
-}
-.file-path {
-  font-family: var(--font-family-monospace);
-  background-color: var(--light-bg);
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--border-radius);
-  font-size: 1em;
-  margin-bottom: var(--spacing-unit);
-  display: inline-block; /* Fit content */
-}
-.summary-box {
-  background-color: var(--medium-bg);
-  padding: var(--spacing-unit);
-  border-radius: var(--border-radius);
-  margin-bottom: var(--spacing-unit);
-  border-left: 3px solid var(--primary-color);
-}
-.summary-box .label { /* Label inside summary box */
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-    display: block;
-}
-
-/* Modification Preview */
-.diff-view {
-    margin-bottom: calc(var(--spacing-unit) * 1.5);
-}
-.diff-view h2 { /* File path */
-    font-family: var(--font-family-monospace);
-    background-color: var(--light-bg);
-    padding: 0.5rem;
-    border-radius: var(--border-radius);
-    font-size: 1.1em;
-}
-.diff-view h3 { /* "Diff:" heading */
-    margin-top: var(--spacing-unit);
-    margin-bottom: 0.5rem;
-}
-.diff-view pre {
-    border: 1px solid var(--border-color);
-}
-
-/* Utility Classes */
-.mb-3 {
-  margin-bottom: var(--spacing-unit) !important;
-}
-.mt-3 {
-    margin-top: var(--spacing-unit) !important;
-}
-.d-none {
-  display: none !important;
-}
-.text-center {
-    text-align: center;
-}
-.list-unstyled {
-    list-style: none;
-    padding-left: 0;
-}
-
-
-/* --- Specific Overrides & Adjustments --- */
-
-/* Home page - file tree preview */
-#fileTreePreview {
-  margin-top: var(--spacing-unit);
-  padding-top: var(--spacing-unit);
-  border-top: 1px solid var(--border-color);
-}
-#fileTreePreview h2 {
-    font-size: 1.2em;
-    margin-bottom: 0.5rem;
-}
-#fileTreeContainer {
-    max-height: 300px;
-    overflow: auto;
-    border: 1px solid var(--border-color);
-    padding: 0.5rem;
-    background: var(--medium-bg);
-    margin-bottom: var(--spacing-unit);
-}
-#loadPathBtn {
-    margin-left: 0.5rem;
-}
-
-/* Project Dashboard - File List in Sidebar */
-#file-list-sidebar {
-    max-height: 40vh; /* Limit height */
-    overflow-y: auto;
-    margin-top: 0.5rem;
-}
-#file-list-sidebar li {
-    cursor: pointer;
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--border-radius);
-    font-size: 0.9em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-#file-list-sidebar li:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Query Detail - Raw Response Toggle */
-#rawResponseContainer {
-    margin-top: var(--spacing-unit);
-    border: 1px dashed var(--border-color);
-    padding: var(--spacing-unit);
-    background: var(--light-bg);
-}
-
-/* Adjust button alignment in forms if needed */
-form button[type="submit"],
-form button[type="button"] {
-    /* Add styles if default alignment isn't sufficient */
-}
-
-/* Ensure nl2br content wraps correctly */
-.dashboard-content-display div {
-    white-space: pre-wrap; /* Ensure line breaks are respected and text wraps */
-    word-wrap: break-word;
-}
-
-
-/* code_summarizer/static/css/style.css */
-/* Additions/Modifications shown below. Assume existing styles are present */
-
-/* --- Base & Reset --- */
-/* ... (existing styles) ... */
-body {
-  margin: 0;
-  font-family: var(--font-family);
-  line-height: 1.6;
-  color: var(--text-color);
-  background-color: var(--light-bg);
-  /* display: flex; Remove default flex here if using container-fluid/app-layout selectively */
-  min-height: 100vh;
-}
-
-/* ... (existing styles for h1-h6, p, a, pre, ul, li, hr) ... */
-pre {
-  background-color: var(--medium-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: var(--spacing-unit);
-  font-family: var(--font-family-monospace);
-  white-space: pre-wrap; /* Allow wrapping */
-  word-wrap: break-word; /* Break long words */
-  overflow-x: auto; /* Add scrollbar if needed */
-}
-
-
-/* --- Layout --- */
-.app-layout {
-  display: flex;
-  width: 100%;
-  min-height: 100vh; /* Ensure layout takes full height */
-}
-
-.app-sidebar {
-  width: var(--sidebar-width);
-  background-color: var(--secondary-color);
-  color: var(--text-light);
-  padding: var(--spacing-unit);
-  flex-shrink: 0; /* Prevent sidebar from shrinking */
-  overflow-y: auto; /* Add scroll if content overflows */
-  height: 100vh; /* Make sidebar full height */
-  position: sticky; /* Keep sidebar visible when content scrolls */
-  top: 0;
-}
-
-.app-content {
-  flex-grow: 1; /* Allow content to take remaining space */
-  padding: var(--spacing-unit);
-  /* background-color: #fff; Let container-fluid handle bg if nested */
-  overflow-y: auto; /* Add scroll if content overflows */
-  /* Remove height: 100vh if app-layout manages height */
-}
-
-/* Container for pages without a sidebar, or wrapper within app-content */
-.container-fluid {
-  width: 100%;
-  max-width: 1400px; /* Wider max-width maybe? */
-  margin: 0 auto;
-  padding: var(--spacing-unit);
-  /* background-color: #fff; /* Give it a background if not inside app-content */
-  /* border-radius: var(--border-radius); */
-  /* box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); */
-  margin-top: var(--spacing-unit); /* Add some top margin */
-}
-/* Adjustments if container-fluid is used INSIDE app-content */
-.app-content > .container-fluid {
-    margin-top: 0;
-    padding: 0; /* Remove padding if app-content already has it */
-    max-width: none; /* Allow it to fill app-content */
-    background-color: #fff; /* Ensure white background */
-    border-radius: var(--border-radius);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    padding: var(--spacing-unit); /* Re-add padding inside */
-
-}
-
-
-/* --- Components --- */
-/* ... (existing button styles .btn, .btn-primary etc.) ... */
-
-/* Forms */
-/* ... (existing form styles) ... */
-
-/* Sidebar specific styles */
-/* ... (existing .app-sidebar h1-h3, ul styles) ... */
 .app-sidebar li a,
 .app-sidebar li button { /* Style buttons used for navigation too */
   color: var(--light-bg);
@@ -815,11 +373,496 @@ pre {
     font-weight: bold;
 }
 
-/* ... (existing project-status, file-tree styles) ... */
 
-/* --- Specific Page Styles --- */
+.project-status {
+  font-size: 0.85em;
+  color: var(--warning-color);
+  margin-left: 0.5em;
+  font-style: italic;
+}
+.project-status.has-summary { /* Style for '✓ Summary' */
+    color: var(--success-color);
+    font-weight: bold;
+    font-style: normal;
+}
 
-/* Confirm Prompt Page */
+/* File Tree (Generic, can be used in multiple places) */
+.file-tree-container {
+    max-height: 300px; /* Default max height */
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    padding: 0.5rem;
+    background: var(--medium-bg);
+    margin-bottom: var(--spacing-unit);
+    border-radius: var(--border-radius);
+}
+.file-tree { /* The UL element */
+  font-family: var(--font-family-monospace);
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+/* Override UL padding if nested */
+.file-tree ul {
+  list-style-type: none;
+  padding-left: var(--spacing-unit);
+  margin: 0;
+}
+
+.file-tree li {
+  margin: 0.25rem 0;
+  padding: 0.1rem 0;
+}
+
+.file-tree .folder > label,
+.file-tree .file > label {
+  cursor: pointer;
+  display: inline-flex; /* Align checkbox and text */
+  align-items: center;
+}
+
+.file-tree input[type="checkbox"] {
+  margin-right: 0.5em;
+  cursor: pointer;
+  flex-shrink: 0; /* Prevent checkbox shrinking */
+}
+
+.file-tree .folder-toggle {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+  cursor: pointer;
+  margin-right: 0.2em;
+  color: var(--secondary-color);
+  font-weight: bold;
+}
+
+.file-tree .folder-name {
+  font-weight: bold;
+  color: var(--secondary-color);
+}
+
+.file-tree .file-name {
+  color: var(--text-color);
+}
+.file-tree .file-name.code-file { /* Highlight code files */
+    /* color: var(--primary-color); */ /* Optional: different color */
+}
+
+
+.file-tree .folder-contents {
+  /* display: block; */ /* Initially shown, JS will hide */
+  padding-left: 0.5em; /* Indent contents slightly */
+}
+
+/* File Selection Controls (on project_files page) */
+.file-selection-controls {
+  margin-bottom: var(--spacing-unit);
+  padding-bottom: var(--spacing-unit);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.file-selection-controls .btn {
+    background-color: var(--light-bg);
+    border-color: #ccc;
+    color: var(--text-color);
+}
+.file-selection-controls .btn:hover {
+    background-color: #e0e0e0;
+}
+
+/* Summary Generation Section */
+.summary-generation {
+  margin-top: var(--spacing-unit);
+  padding: var(--spacing-unit);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--medium-bg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-unit);
+  flex-wrap: wrap; /* Allow wrapping on smaller screens */
+}
+.summary-generation form {
+    display: contents; /* Allow form elements to participate in flex layout */
+}
+
+/* Dashboard Specific */
+.dashboard-header {
+  margin-bottom: var(--spacing-unit);
+  padding-bottom: var(--spacing-unit);
+  border-bottom: 1px solid var(--border-color);
+}
+.dashboard-header h1 {
+    margin-bottom: 0.25rem;
+}
+.dashboard-header p {
+  font-size: 0.9em;
+  color: #6c757d; /* Muted text */
+  margin-bottom: 0;
+}
+
+
+.dashboard-status {
+  padding: var(--spacing-unit);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--spacing-unit);
+  border: 1px solid transparent; /* Base border */
+}
+.dashboard-status.status-up_to_date { background-color: #d4edda; border-color: #c3e6cb; color: #155724;}
+.dashboard-status.status-needs_update { background-color: #fff3cd; border-color: #ffeeba; color: #856404;}
+.dashboard-status.status-not_summarized { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24;}
+.dashboard-status.status-error,
+.dashboard-status.status-error_loading_summary,
+.dashboard-status.status-error_during_summary_update { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24;}
+.dashboard-status.status-summarizing { background-color: #cce5ff; border-color: #b8daff; color: #004085;}
+.dashboard-status.status-new,
+.dashboard-status.status-empty_source { background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460;}
+
+
+.dashboard-actions {
+    margin-bottom: var(--spacing-unit);
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.dashboard-query-section {
+    margin-top: calc(var(--spacing-unit) * 1.5);
+    padding-top: var(--spacing-unit);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Query History / List Styles */
+.history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 400px; /* Limit height */
+    overflow-y: auto; /* Add scrollbar */
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-top: var(--spacing-unit);
+}
+.history-item {
+    margin: 0;
+    padding: 0.75rem var(--spacing-unit);
+    background-color: #fff;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s;
+}
+.history-item:last-child {
+    border-bottom: none;
+}
+.history-item:hover {
+    background-color: var(--medium-bg);
+}
+.history-item-content {
+    flex-grow: 1;
+    overflow: hidden; /* Prevent long text overflowing */
+}
+.history-item-content a {
+    text-decoration: none;
+    color: var(--primary-color);
+    font-weight: 500;
+    display: block; /* Make link take full width */
+}
+.history-item-content a:hover {
+    text-decoration: underline;
+}
+
+.history-item-meta {
+    font-size: 0.85em;
+    color: #6c757d;
+    margin-top: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.history-item-meta span {
+    margin-right: 0.75rem; /* Space between meta items */
+}
+.history-item-actions {
+    flex-shrink: 0; /* Prevent delete button from shrinking */
+}
+.history-item .delete-btn {
+    padding: 0.2rem 0.4rem; /* Smaller padding */
+    font-size: 0.8em; /* Smaller font */
+}
+
+
+/* Query Detail Page */
+.detail-section {
+  margin-bottom: calc(var(--spacing-unit) * 1.5);
+  padding: var(--spacing-unit);
+  background-color: #fff;
+  border-radius: var(--border-radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.detail-label {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+  color: var(--secondary-color);
+  font-size: 0.9em;
+  text-transform: uppercase;
+}
+.detail-value {
+  margin-bottom: var(--spacing-unit);
+}
+.detail-value pre { /* Style pre within value if needed */
+    margin-top: 0.5rem;
+    background-color: var(--light-bg); /* Lighter bg for detail pre */
+}
+
+.query-actions { /* Buttons on detail page */
+    margin-top: var(--spacing-unit);
+    padding-top: var(--spacing-unit);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 0.5rem;
+    align-items: center; /* Align dropdown and button */
+    flex-wrap: wrap;
+}
+
+.file-entry {
+  margin-bottom: calc(var(--spacing-unit) * 1.5);
+  padding: var(--spacing-unit);
+  background-color: #fff;
+  border-radius: var(--border-radius);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border-left: 3px solid var(--accent-color);
+}
+.file-path {
+  font-family: var(--font-family-monospace);
+  background-color: var(--light-bg);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--border-radius);
+  font-size: 1em;
+  margin-bottom: var(--spacing-unit);
+  display: inline-block; /* Fit content */
+  word-break: break-all; /* Break long paths */
+}
+.summary-box {
+  background-color: var(--medium-bg);
+  padding: var(--spacing-unit);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--spacing-unit);
+  border-left: 3px solid var(--primary-color);
+}
+.summary-box .label { /* Label inside summary box */
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    display: block;
+    color: var(--secondary-color);
+}
+.summary-box p:last-child {
+    margin-bottom: 0; /* Remove margin from last paragraph */
+}
+
+/* Modification Preview */
+.diff-view {
+    margin-bottom: calc(var(--spacing-unit) * 1.5);
+}
+.diff-view h2 { /* File path */
+    font-family: var(--font-family-monospace);
+    background-color: var(--light-bg);
+    padding: 0.75rem var(--spacing-unit);
+    border-radius: var(--border-radius);
+    font-size: 1.1em;
+    margin-bottom: var(--spacing-unit);
+    word-break: break-all;
+}
+.diff-view h3 { /* "Diff:" heading */
+    margin-top: var(--spacing-unit);
+    margin-bottom: 0.5rem;
+}
+.diff-view pre {
+    border: 1px solid var(--border-color);
+    background-color: #2b2b2b; /* Dark background */
+    color: #f0f0f0; /* Light text */
+    font-size: 0.85em;
+}
+/* Diff Highlighting */
+pre code.diff span.diff-added { background-color: rgba(46, 160, 67, 0.2); display: block; }
+pre code.diff span.diff-removed { background-color: rgba(248, 81, 73, 0.15); display: block; text-decoration: line-through; }
+pre code.diff span.diff-added::before { content: '+ '; padding-right: 5px; color: #2ecc71; }
+pre code.diff span.diff-removed::before { content: '- '; padding-right: 5px; color: #e74c3c; }
+/* Style lines starting with ' ' (unchanged context) */
+pre code.diff span:not([class*="diff-"]) {
+    opacity: 0.7; /* Dim unchanged lines slightly */
+    display: block; /* Ensure context lines also take full width */
+}
+pre code.diff span:not([class*="diff-"])::before {
+    content: '  '; /* Add space prefix for alignment */
+    padding-right: 5px;
+}
+
+
+/* Utility Classes */
+.mb-1 { margin-bottom: calc(var(--spacing-unit) * 0.25) !important; }
+.mb-2 { margin-bottom: calc(var(--spacing-unit) * 0.5) !important; }
+.mb-3 { margin-bottom: var(--spacing-unit) !important; }
+.mt-1 { margin-top: calc(var(--spacing-unit) * 0.25) !important; }
+.mt-2 { margin-top: calc(var(--spacing-unit) * 0.5) !important; }
+.mt-3 { margin-top: var(--spacing-unit) !important; }
+.ms-1 { margin-left: calc(var(--spacing-unit) * 0.25) !important; }
+.ms-2 { margin-left: calc(var(--spacing-unit) * 0.5) !important; }
+.me-1 { margin-right: calc(var(--spacing-unit) * 0.25) !important; }
+.me-2 { margin-right: calc(var(--spacing-unit) * 0.5) !important; }
+
+
+.d-none {
+  display: none !important;
+}
+.text-center {
+    text-align: center;
+}
+.text-danger { color: var(--danger-color) !important; }
+.text-success { color: var(--success-color) !important; }
+.text-warning { color: var(--warning-color) !important; }
+.text-muted { color: #6c757d !important; }
+
+.list-unstyled {
+    list-style: none;
+    padding-left: 0;
+}
+
+
+/* --- Specific Overrides & Adjustments --- */
+
+/* Home page - Tabs */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0; /* Remove bottom margin to connect with content */
+}
+.tab-link {
+  padding: 0.75rem 1.25rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: -1px; /* Overlap border */
+  background-color: var(--light-bg);
+  color: var(--primary-color);
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+  font-weight: 500; /* Slightly less bold */
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  font-size: 1rem;
+}
+.tab-link:hover {
+  background-color: #e9ecef;
+  border-color: transparent; /* Keep border transparent on hover unless active */
+}
+.tab-link.active {
+  background-color: #fff;
+  border-color: var(--border-color);
+  border-bottom-color: #fff; /* Make it look connected to content */
+  color: var(--secondary-color);
+  font-weight: bold;
+}
+.tab-content {
+  display: none; /* Hide tab content by default */
+  padding: calc(var(--spacing-unit) * 1.5); /* More padding */
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+  background-color: #fff; /* White background for content */
+}
+.tab-content.active {
+  display: block; /* Show active tab content */
+}
+
+/* Home page - file tree preview inside tab */
+#fileTreePreview {
+  margin-top: var(--spacing-unit);
+  padding-top: var(--spacing-unit);
+  border-top: 1px solid var(--border-color);
+}
+#fileTreePreview h3 {
+    font-size: 1.2em;
+    margin-bottom: 0.75rem;
+}
+#loadPathBtn {
+    margin-left: 0.5rem;
+    flex-shrink: 0; /* Prevent button shrinking */
+}
+
+/* Project Dashboard - File List in Sidebar */
+#file-list-sidebar {
+    max-height: 40vh; /* Limit height */
+    overflow-y: auto;
+    margin-top: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius);
+    padding: 0.5rem;
+}
+#file-list-sidebar ul {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+#file-list-sidebar li {
+    cursor: pointer;
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--border-radius);
+    font-size: 0.9em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--light-bg);
+    margin-bottom: 0.2rem;
+    transition: background-color 0.2s;
+}
+#file-list-sidebar li:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+#file-list-sidebar li.active {
+    background-color: var(--primary-color);
+    color: #fff;
+    font-weight: bold;
+}
+
+
+/* Query Detail - Raw Response Toggle */
+#rawResponseContainer {
+    margin-top: var(--spacing-unit);
+    border: 1px dashed var(--border-color);
+    padding: var(--spacing-unit);
+    background: var(--light-bg);
+    border-radius: var(--border-radius);
+}
+#rawResponseContainer pre {
+    background-color: #fff; /* White background inside dashed box */
+}
+
+/* Flash Messages */
+#flash-messages {
+    margin-bottom: var(--spacing-unit);
+}
+.alert {
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius);
+}
+.alert-success { color: #155724; background-color: #d4edda; border-color: #c3e6cb; }
+.alert-info { color: #0c5460; background-color: #d1ecf1; border-color: #bee5eb; }
+.alert-warning { color: #856404; background-color: #fff3cd; border-color: #ffeeba; }
+.alert-error, .alert-danger { color: #721c24; background-color: #f8d7da; border-color: #f5c6cb; }
+
+
+/* Ensure nl2br content wraps correctly if used outside pre tags*/
+.nl2br-content {
+    white-space: pre-wrap; /* Ensure line breaks are respected and text wraps */
+    word-wrap: break-word;
+}
+
+/* Confirm Prompt Page Specific */
 .prompt-container {
     max-height: 60vh; /* Limit height */
     overflow-y: auto; /* Enable vertical scroll */
@@ -853,17 +896,16 @@ pre {
 }
 
 
-/* Preview Modification Page */
+/* Preview Modification Page Specific */
 .preview-layout {
     display: flex;
-    /* Adjust height calculation if necessary, depends on header/footer */
-    /* Using flex grow on content usually handles height distribution well */
-    /* height: calc(100vh - 100px); */
     margin-top: var(--spacing-unit);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     background-color: #fff; /* White background for the layout box */
     overflow: hidden; /* Prevent content spillover */
+    /* Consider setting a height or min-height if needed */
+    min-height: 70vh;
 }
 .preview-sidebar {
     width: 300px; /* Fixed width sidebar */
@@ -873,7 +915,6 @@ pre {
     padding: var(--spacing-unit);
     overflow-y: auto; /* Scrollbar for file list if needed */
     border-right: 1px solid var(--border-color);
-    /* height: 100%; /* Let flexbox manage height */
 }
 .preview-content {
     flex-grow: 1;
@@ -894,7 +935,16 @@ pre {
     padding: 0;
     margin: 0;
 }
-/* Using .app-sidebar button styles defined earlier */
+/* Using .app-sidebar button styles defined earlier for file list */
+.preview-sidebar li button {
+    /* Inherits styles from .app-sidebar li button */
+}
+.preview-sidebar li button.active {
+     background-color: var(--accent-color); /* Use accent for active diff */
+     color: #fff;
+     font-weight: bold;
+}
+
 
 .diff-content-item {
     display: none; /* Hide all by default */
@@ -926,20 +976,10 @@ pre {
     border: none; /* Remove border from pre, container has it */
     border-radius: 0 0 var(--border-radius) var(--border-radius);
     padding: var(--spacing-unit);
-    background-color: #2b2b2b; /* Dark background for code */
-    color: #f0f0f0; /* Light text for code */
-    font-size: 0.85em; /* Make diff font slightly smaller */
+    /* background-color: #2b2b2b; */ /* Dark background set earlier */
+    /* color: #f0f0f0; */ /* Light text set earlier */
+    /* font-size: 0.85em; */ /* Set earlier */
 }
-/* Diff Highlighting */
-.diff-added { background-color: rgba(46, 160, 67, 0.15); color: #c3e6cb; }
-.diff-removed { background-color: rgba(248, 81, 73, 0.1); color: #f5c6cb; }
-.diff-added::before { content: '+ '; padding-right: 5px; }
-.diff-removed::before { content: '- '; padding-right: 5px; }
-/* Style lines starting with ' ' (unchanged context) */
-pre code.diff span:not([class^="diff-"]) {
-    opacity: 0.7; /* Dim unchanged lines slightly */
-}
-
 
 .preview-actions { /* Container for Accept/Cancel buttons */
     margin-top: var(--spacing-unit);
@@ -951,7 +991,7 @@ pre code.diff span:not([class^="diff-"]) {
     border-radius: 0 0 var(--border-radius) var(--border-radius); /* Match container */
 }
 
-.new-file-indicator { /* Style for (New) text */
+.new-file-indicator { /* Style for (New) text in sidebar button */
     font-style: italic;
     color: var(--success-color);
     font-size: 0.9em;
@@ -969,10 +1009,38 @@ pre code.diff span:not([class^="diff-"]) {
      margin-left: 10px;
 }
 
-/* ... (rest of existing styles.css) ... */
-
-/* Ensure nl2br content wraps correctly if used outside pre tags*/
-.nl2br-content {
-    white-space: pre-wrap; /* Ensure line breaks are respected and text wraps */
-    word-wrap: break-word;
+/* Modification Detail Page */
+.applied-mod-list {
+    list-style: none;
+    padding: 0;
+}
+.applied-mod-item {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-unit);
+    padding: var(--spacing-unit);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    background-color: #fff;
+}
+.applied-mod-info {
+    flex-grow: 1;
+}
+.applied-mod-info .file-path { /* Reuse file-path style */
+    margin-bottom: 0.5rem;
+    font-size: 1.1em;
+}
+.applied-mod-actions {
+    flex-shrink: 0;
+}
+.applied-mod-status {
+    font-size: 0.9em;
+    font-style: italic;
+    color: var(--text-muted);
+}
+.applied-mod-status.is-new {
+    color: var(--success-color);
+    font-weight: bold;
 }

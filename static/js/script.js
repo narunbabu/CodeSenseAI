@@ -1,319 +1,242 @@
 // static/js/script.js
-// document.addEventListener('DOMContentLoaded', function() {
-//     var folderInput = document.getElementById('folderInput');
-//     if (folderInput) {
-//         folderInput.addEventListener('change', function(event) {
-//             if (this.files.length > 0) {
-//                 // Use the webkitRelativePath from the first file to get the folder name.
-//                 var path = this.files[0].webkitRelativePath;
-//                 var folder = path.split("/")[0];
-//                 var folderLabel = document.getElementById('folderLabel');
-//                 if (folderLabel) {
-//                     folderLabel.innerText = "Selected Folder: " + folder;
-//                 }
-//                 // Updated to target the correct hidden input id
-//                 var projectPathInput = document.getElementById('source_code_path');
-//                 if (projectPathInput) {
-//                     projectPathInput.value = folder;
-//                 }
-                
-//                 // Build and display file tree preview
-//                 displayFileTree(Array.from(this.files));
-//             }
-//         });
-//     }
-// });
+
+// DOMContentLoaded listener to set up initial state and event listeners
 document.addEventListener('DOMContentLoaded', function() {
-    var loadBtn = document.getElementById('loadPathBtn');
-    if (loadBtn) {
-        loadBtn.addEventListener('click', function() {
-            var sourceInput = document.getElementById('source_code_input');
-            var sourcePathHidden = document.getElementById('source_code_path');
-            if (!sourceInput || !sourcePathHidden) return;
-            
-            var folder = sourceInput.value.trim();
-            if (!folder) {
-                alert("Please enter a valid source code path");
+
+    // --- Tab Switching Logic ---
+    const tabLinks = document.querySelectorAll('.tab-link');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    // Function to open a specific tab
+    window.openTab = function(evt, tabName) {
+        // Hide all tab contents
+        tabContents.forEach(content => {
+            content.style.display = "none";
+            content.classList.remove("active");
+        });
+
+        // Remove 'active' class from all tab links
+        tabLinks.forEach(link => {
+            link.classList.remove("active");
+        });
+
+        // Show the current tab and add 'active' class to the content and link
+        const currentTab = document.getElementById(tabName);
+        if (currentTab) {
+            currentTab.style.display = "block";
+            currentTab.classList.add("active");
+        }
+        if (evt && evt.currentTarget) {
+            evt.currentTarget.classList.add("active");
+        }
+    }
+
+    // Add click event listeners to tab links
+    tabLinks.forEach(link => {
+        link.addEventListener('click', (event) => {
+            // Find the target tab name from the button's onclick attribute (a bit hacky but works)
+            const onclickAttr = event.currentTarget.getAttribute('onclick');
+            const tabNameMatch = onclickAttr.match(/openTab\(event, '(.*?)'\)/);
+            if (tabNameMatch && tabNameMatch[1]) {
+                openTab(event, tabNameMatch[1]);
+            }
+        });
+    });
+
+    // Activate the default active tab on page load (if needed, CSS handles initial state)
+    // const initialActiveTab = document.querySelector('.tab-link.active');
+    // if (initialActiveTab) {
+    //     const onclickAttr = initialActiveTab.getAttribute('onclick');
+    //     const tabNameMatch = onclickAttr.match(/openTab\(event, '(.*?)'\)/);
+    //      if (tabNameMatch && tabNameMatch[1]) {
+    //         document.getElementById(tabNameMatch[1]).style.display = 'block';
+    //      }
+    // }
+
+
+    // --- File Preview Logic (for Select Project Tab) ---
+    const loadPathBtn = document.getElementById('loadPathBtn');
+    if (loadPathBtn) {
+        loadPathBtn.addEventListener('click', function() {
+            const sourceCodeInput = document.getElementById('source_code_input'); // The display input
+            const sourceCodePathHidden = document.getElementById('source_code_path'); // The hidden input for submission
+            const fileTreePreviewDiv = document.getElementById('fileTreePreview');
+            const fileTreeContainer = document.getElementById('fileTreeContainer');
+            const selectProjectBtn = document.getElementById('createProjectBtn'); // Button in the "Select Project" tab
+
+            if (!sourceCodeInput || !sourceCodePathHidden || !fileTreePreviewDiv || !fileTreeContainer || !selectProjectBtn) {
+                console.error("One or more elements for file preview not found.");
                 return;
             }
-            // Set the hidden field value so it gets submitted with the form
-            sourcePathHidden.value = folder;
-            
-            // Make an AJAX call to the server to get the file list for the folder
-            fetch('/list_files?source_code_path=' + encodeURIComponent(folder))
-                .then(response => response.json())
-                .then(files => {
-                    if (files.error) {
-                        alert(files.error);
-                        return;
+
+            const sourcePath = sourceCodeInput.value.trim();
+            if (!sourcePath) {
+                alert("Please enter a source code path.");
+                return;
+            }
+            // Set the hidden field value for form submission.
+            sourceCodePathHidden.value = sourcePath;
+
+            // Show preview area and loading state
+            fileTreePreviewDiv.style.display = 'block';
+            fileTreeContainer.innerHTML = "<p><em>Loading file list...</em></p>";
+            selectProjectBtn.style.display = 'none'; // Hide button until loaded
+
+            // Fetch the list of files using the /list_files endpoint.
+            fetch('/list_files?source_code_path=' + encodeURIComponent(sourcePath))
+                .then(response => {
+                    if (!response.ok) {
+                        // Try to parse error json, otherwise use status text
+                        return response.json().then(err => { throw new Error(err.error || `Server error: ${response.statusText}`); })
+                                             .catch(() => { throw new Error(`Server error: ${response.statusText}`); });
                     }
-                    displayFileTree(files);
+                    return response.json();
+                })
+                .then(data => {
+                    fileTreeContainer.innerHTML = ""; // Clear loading message
+                    if (data.error) { // Should be caught by !response.ok now, but double check
+                        fileTreeContainer.innerHTML = "<p class='text-danger'>Error: " + data.error + "</p>";
+                    } else if (data.length === 0) {
+                        fileTreeContainer.innerHTML = "<p>No processable code files found in this directory.</p>";
+                        selectProjectBtn.style.display = 'block'; // Show button even if empty
+                    } else {
+                        // Build a simple file tree list (could be enhanced later)
+                        let fileListHtml = '<ul style="list-style-type: none; padding-left: 0;">';
+                        data.forEach(function(file) {
+                            // Basic filtering display for common non-code files if needed, though server filters extensions
+                            // const isLikelyCode = /\.(js|py|html|css|java|cpp|c|h|php|ts|jsx|tsx)$/i.test(file.name);
+                            fileListHtml += `<li style="font-family: monospace; font-size: 0.9em; margin-bottom: 2px;">${escapeHtml(file.webkitRelativePath)}</li>`;
+                        });
+                        fileListHtml += '</ul>';
+                        fileTreeContainer.innerHTML = fileListHtml;
+                        selectProjectBtn.style.display = 'block'; // Show button
+                    }
                 })
                 .catch(error => {
-                    console.error("Error loading file list:", error);
-                    alert("Error loading file list. Check console for details.");
+                    console.error("Error loading file tree:", error);
+                    fileTreeContainer.innerHTML = "<p class='text-danger'>Error loading file tree: " + error.message + "</p>";
+                    selectProjectBtn.style.display = 'none'; // Keep button hidden on error
                 });
         });
     }
-});
 
-function displayFileTree(files) {
-    const fileTreeContainer = document.getElementById('fileTreeContainer');
-    const fileTreePreview = document.getElementById('fileTreePreview');
-    const createProjectBtn = document.getElementById('createProjectBtn');
-    const goToDashboardBtn = document.getElementById('goToDashboardBtn');
-    
-    if (!fileTreeContainer || !fileTreePreview) return;
-    
-    fileTreePreview.style.display = 'block';
-    
-    // For a new project, show the Create Project button and hide the Dashboard button
-    if (createProjectBtn) createProjectBtn.style.display = 'block';
-    if (goToDashboardBtn) goToDashboardBtn.style.display = 'none';
-    
-    // Build tree structure with strict excluded-folder filtering
-    const tree = {};
-    const excludedFolders = ['node_modules', '.git', '__pycache__', 'venv', 'env', 'dist', 'build'];
-    
-    files.forEach(file => {
-        // The server returns a property "webkitRelativePath" (the relative path of the file)
-        const pathParts = file.webkitRelativePath.split('/');
-        let currentLevel = tree;
-        let shouldExclude = false;
-        
-        // Check if any folder in the path is excluded
-        for (const part of pathParts.slice(0, -1)) {
-            if (excludedFolders.includes(part)) {
-                shouldExclude = true;
-                break;
+
+    // --- Validation Logic (for Create New Project Tab) ---
+    const createProjectForm = document.getElementById('createProjectForm');
+    if (createProjectForm) {
+        createProjectForm.addEventListener('submit', function(event) {
+            const nameInput = document.getElementById('project_name');
+            const pathInput = document.getElementById('project_path');
+            let isValid = true;
+            let errors = [];
+
+            // Validate Project Name
+            const projectName = nameInput.value.trim();
+            if (!projectName) {
+                errors.push('Project Name cannot be empty.');
+                isValid = false;
+            } else if (!/^[a-zA-Z0-9._-]+$/.test(projectName)) {
+                 // Allow dots, underscores, hyphens along with alphanumerics
+                errors.push('Project Name can only contain letters, numbers, dots (.), underscores (_), and hyphens (-).');
+                isValid = false;
+            } else if (projectName.length > 100) { // Optional: Max length
+                 errors.push('Project Name is too long (max 100 characters).');
+                 isValid = false;
+             }
+
+            // Validate Source Code Path
+            const projectPath = pathInput.value.trim();
+            if (!projectPath) {
+                errors.push('Source Code Path cannot be empty.');
+                isValid = false;
             }
-        }
-        
-        if (shouldExclude) return;
-        
-        pathParts.forEach((part, index) => {
-            if (!currentLevel[part]) {
-                if (index === pathParts.length - 1) {
-                    const ext = part.split('.').pop().toLowerCase();
-                    const isCodeFile = ['js', 'py', 'html', 'css', 'java', 'cpp', 'c', 'h', 'php', 'ts', 'jsx', 'tsx'].includes(ext);
-                    
-                    currentLevel[part] = {
-                        type: 'file',
-                        name: part,
-                        path: file.webkitRelativePath,
-                        isCode: isCodeFile
-                    };
-                } else {
-                    currentLevel[part] = {
-                        type: 'folder',
-                        name: part,
-                        children: {}
-                    };
-                }
+            // Basic check for absolute path (starts with / or drive letter C:\ etc.) - OS dependent!
+            // This check is rudimentary. Server-side validation is more reliable.
+            else if (!projectPath.startsWith('/') && !/^[a-zA-Z]:[\\/]/.test(projectPath)) {
+                 errors.push('Please provide an absolute path for the Source Code Path (e.g., /path/to/project or C:\\path\\to\\project).');
+                 isValid = false;
+             }
+
+            if (!isValid) {
+                event.preventDefault(); // Stop form submission
+                alert("Please fix the following errors:\n- " + errors.join("\n- "));
+                // Focus the first invalid field
+                if (errors[0].includes('Name')) nameInput.focus();
+                else pathInput.focus();
             }
-            
-            if (index < pathParts.length - 1) {
-                currentLevel = currentLevel[part].children;
-            }
+            // If valid, the form will submit normally to /create_project
         });
-    });
-    
-    fileTreeContainer.innerHTML = generateTreeHTML(tree);
-    
-    // Auto-select all code files by default
-    document.querySelectorAll('input[data-type="file"]').forEach(checkbox => {
-        if (checkbox.parentElement.querySelector('.code-file')) {
-            checkbox.checked = true;
-        }
-    });
-}
-
-function generateTreeHTML(tree) {
-    let html = '<ul class="file-tree">';
-    
-    // Sort entries: folders first, then files (alphabetically)
-    const entries = Object.entries(tree).sort((a, b) => {
-        if (a[1].type !== b[1].type) {
-            return a[1].type === 'folder' ? -1 : 1;
-        }
-        return a[0].localeCompare(b[0]);
-    });
-    
-    for (const [name, item] of entries) {
-        if (item.type === 'folder') {
-            const isExcluded = ['node_modules', '.git', '.idea', '__pycache__', 'venv', 'env'].includes(name);
-            const checked = isExcluded ? '' : 'checked';
-            
-            html += '<li>';
-            html += '<label>';
-            html += `<input type="checkbox" data-type="folder" data-path="${name}" ${checked}>`;
-            html += `<span class="folder-name">${name}/</span>`;
-            html += '</label>';
-            html += generateTreeHTML(item.children);
-            html += '</li>';
-        } else {
-            const ext = name.split('.').pop().toLowerCase();
-            const isCodeFile = ['js', 'py', 'html', 'css', 'java', 'cpp', 'c', 'h', 'php', 'ts', 'jsx', 'tsx'].includes(ext);
-            const checked = isCodeFile ? 'checked' : '';
-            
-            html += '<li>';
-            html += '<label>';
-            html += `<input type="checkbox" name="selected_files" data-type="file" data-path="${item.path}" ${checked}>`;
-            html += `<span class="file-name ${isCodeFile ? 'code-file' : ''}">${name}</span>`;
-            html += '</label>';
-            html += '</li>';
-        }
     }
-    
-    html += '</ul>';
-    return html;
+
+    // --- Flash Message Dismissal ---
+    setTimeout(function() {
+        let flashMessages = document.getElementById('flash-messages');
+        if (flashMessages) {
+            // Add fade-out effect
+            flashMessages.style.transition = 'opacity 0.5s ease-out';
+            flashMessages.style.opacity = '0';
+            // Remove from DOM after fade out
+            setTimeout(() => {
+                 if (flashMessages.parentNode) {
+                     flashMessages.parentNode.removeChild(flashMessages);
+                 }
+             }, 500); // Match transition duration
+        }
+    }, 5000); // Start fade out after 5 seconds
+
+}); // End DOMContentLoaded
+
+// --- Helper Functions ---
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return unsafe
+         .toString()
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
 }
 
 
-
+// --- Optional: File Tree Interaction (for project_files.html page) ---
+// This part belongs on the project_files.html template's script block or a separate JS file loaded there.
+// Example of handling checkbox clicks for hierarchical selection (if needed):
+/*
 document.addEventListener('DOMContentLoaded', function() {
-    var loadBtn = document.getElementById('loadPathBtn');
-    if (loadBtn) {
-        loadBtn.addEventListener('click', function() {
-            var sourceInput = document.getElementById('source_code_input');
-            var sourcePathHidden = document.getElementById('source_code_path');
-            if (!sourceInput || !sourcePathHidden) return;
-            
-            var folder = sourceInput.value.trim();
-            if (!folder) {
-                alert("Please enter a valid source code path");
-                return;
+    const fileTree = document.querySelector('.file-tree'); // Assuming the tree container has this class
+
+    if (fileTree) {
+        fileTree.addEventListener('change', function(event) {
+            const target = event.target;
+            if (target.matches('input[type="checkbox"]')) {
+                const isChecked = target.checked;
+                const listItem = target.closest('li');
+
+                // If it's a folder checkbox, check/uncheck all children
+                if (target.dataset.type === 'folder' && listItem) {
+                    const childCheckboxes = listItem.querySelectorAll('input[type="checkbox"]');
+                    childCheckboxes.forEach(cb => {
+                        if (cb !== target) { // Don't re-trigger on the same checkbox
+                            cb.checked = isChecked;
+                        }
+                    });
+                }
+                // Optional: If a file is unchecked, uncheck parent folders? (Can be complex)
+                // else if (target.dataset.type === 'file' && !isChecked) {
+                //     let parentLi = listItem.parentElement.closest('li');
+                //     while(parentLi) {
+                //         const folderCheckbox = parentLi.querySelector(':scope > label > input[data-type="folder"]');
+                //         if(folderCheckbox) folderCheckbox.checked = false;
+                //         parentLi = parentLi.parentElement.closest('li');
+                //     }
+                // }
+                 // Optional: If a file is checked, ensure parent folders are checked?
+                 // else if (target.dataset.type === 'file' && isChecked) {
+                 //    // Similar logic walking up the tree
+                 // }
             }
-            // Set the hidden field value so it gets submitted with the form
-            sourcePathHidden.value = folder;
-            
-            // Make an AJAX call to the server to get the file list for the folder
-            fetch('/list_files?source_code_path=' + encodeURIComponent(folder))
-                .then(response => response.json())
-                .then(files => {
-                    if (files.error) {
-                        alert(files.error);
-                        return;
-                    }
-                    displayFileTree(files);
-                })
-                .catch(error => {
-                    console.error("Error loading file list:", error);
-                    alert("Error loading file list. Check console for details.");
-                });
         });
     }
 });
-
-function displayFileTree(files) {
-    const fileTreeContainer = document.getElementById('fileTreeContainer');
-    const fileTreePreview = document.getElementById('fileTreePreview');
-    const createProjectBtn = document.getElementById('createProjectBtn');
-    const goToDashboardBtn = document.getElementById('goToDashboardBtn');
-    
-    if (!fileTreeContainer || !fileTreePreview) return;
-    
-    fileTreePreview.style.display = 'block';
-    
-    // For a new project, show the Create Project button and hide the Dashboard button
-    if (createProjectBtn) createProjectBtn.style.display = 'block';
-    if (goToDashboardBtn) goToDashboardBtn.style.display = 'none';
-    
-    // Build tree structure with strict excluded-folder filtering
-    const tree = {};
-    const excludedFolders = ['node_modules', '.git', '__pycache__', 'venv', 'env', 'dist', 'build'];
-    
-    files.forEach(file => {
-        // The server returns a property "webkitRelativePath" (the relative path of the file)
-        const pathParts = file.webkitRelativePath.split('/');
-        let currentLevel = tree;
-        let shouldExclude = false;
-        
-        // Check if any folder in the path is excluded
-        for (const part of pathParts.slice(0, -1)) {
-            if (excludedFolders.includes(part)) {
-                shouldExclude = true;
-                break;
-            }
-        }
-        
-        if (shouldExclude) return;
-        
-        pathParts.forEach((part, index) => {
-            if (!currentLevel[part]) {
-                if (index === pathParts.length - 1) {
-                    const ext = part.split('.').pop().toLowerCase();
-                    const isCodeFile = ['js', 'py', 'html', 'css', 'java', 'cpp', 'c', 'h', 'php', 'ts', 'jsx', 'tsx'].includes(ext);
-                    
-                    currentLevel[part] = {
-                        type: 'file',
-                        name: part,
-                        path: file.webkitRelativePath,
-                        isCode: isCodeFile
-                    };
-                } else {
-                    currentLevel[part] = {
-                        type: 'folder',
-                        name: part,
-                        children: {}
-                    };
-                }
-            }
-            
-            if (index < pathParts.length - 1) {
-                currentLevel = currentLevel[part].children;
-            }
-        });
-    });
-    
-    fileTreeContainer.innerHTML = generateTreeHTML(tree);
-    
-    // Auto-select all code files by default
-    document.querySelectorAll('input[data-type="file"]').forEach(checkbox => {
-        if (checkbox.parentElement.querySelector('.code-file')) {
-            checkbox.checked = true;
-        }
-    });
-}
-
-function generateTreeHTML(tree) {
-    let html = '<ul class="file-tree">';
-    
-    // Sort entries: folders first, then files (alphabetically)
-    const entries = Object.entries(tree).sort((a, b) => {
-        if (a[1].type !== b[1].type) {
-            return a[1].type === 'folder' ? -1 : 1;
-        }
-        return a[0].localeCompare(b[0]);
-    });
-    
-    for (const [name, item] of entries) {
-        if (item.type === 'folder') {
-            const isExcluded = ['node_modules', '.git', '.idea', '__pycache__', 'venv', 'env'].includes(name);
-            const checked = isExcluded ? '' : 'checked';
-            
-            html += '<li>';
-            html += '<label>';
-            html += `<input type="checkbox" data-type="folder" data-path="${name}" ${checked}>`;
-            html += `<span class="folder-name">${name}/</span>`;
-            html += '</label>';
-            html += generateTreeHTML(item.children);
-            html += '</li>';
-        } else {
-            const ext = name.split('.').pop().toLowerCase();
-            const isCodeFile = ['js', 'py', 'html', 'css', 'java', 'cpp', 'c', 'h', 'php', 'ts', 'jsx', 'tsx'].includes(ext);
-            const checked = isCodeFile ? 'checked' : '';
-            
-            html += '<li>';
-            html += '<label>';
-            html += `<input type="checkbox" name="selected_files" data-type="file" data-path="${item.path}" ${checked}>`;
-            html += `<span class="file-name ${isCodeFile ? 'code-file' : ''}">${name}</span>`;
-            html += '</label>';
-            html += '</li>';
-        }
-    }
-    
-    html += '</ul>';
-    return html;
-}
-
+*/

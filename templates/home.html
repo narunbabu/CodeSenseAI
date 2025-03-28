@@ -1,13 +1,13 @@
-<!--New templates/index.html  -->
+<!-- templates/home.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Home</title>
+  <title>Project Home - Code Assistant</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
-    /* Optionally add any extra styles for the file tree preview */
+    /* Styles for the file tree preview inside the tab */
     #fileTreeContainer ul {
       list-style: none;
       padding-left: 20px;
@@ -15,12 +15,49 @@
     #fileTreeContainer li {
       margin: 3px 0;
     }
+    .tab-content {
+      display: none; /* Hide tab content by default */
+      padding: 1rem;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 var(--border-radius) var(--border-radius);
+    }
+    .tab-content.active {
+      display: block; /* Show active tab content */
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+      margin-bottom: 0; /* Remove bottom margin */
+    }
+    .tab-link {
+      padding: 0.75rem 1.25rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-bottom: none;
+      margin-bottom: -1px; /* Overlap border */
+      background-color: var(--light-bg);
+      color: var(--primary-color);
+      border-radius: var(--border-radius) var(--border-radius) 0 0;
+      font-weight: bold;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    .tab-link:hover {
+      background-color: #e9ecef;
+    }
+    .tab-link.active {
+      background-color: #fff;
+      border-color: #ddd;
+      border-bottom-color: #fff; /* Make it look connected to content */
+      color: var(--secondary-color);
+    }
   </style>
 </head>
 <body>
   <div class="app-layout"> <!-- Use app layout -->
     <div class="app-sidebar"> <!-- Sidebar -->
       <h2>Existing Projects</h2>
+      {% if projects %}
       <ul class="list-unstyled">
         {% for project in projects %}
           <li>
@@ -35,82 +72,208 @@
           </li>
         {% endfor %}
       </ul>
+      {% else %}
+      <p>No existing projects found in '{{ default_local_storage }}'.</p>
+      {% endif %}
       <hr>
-      <h2>Create New Project</h2>
-      <form action="{{ url_for('select_project') }}" method="POST" id="projectForm">
-        <div class="form-group">
-          <label for="source_code_input" class="form-label">Enter Source Code Path:</label>
-          <div style="display: flex;">
-              <input type="text" id="source_code_input" name="source_code_input" placeholder="Enter absolute source code path" class="form-control" required>
-              <button type="button" id="loadPathBtn" class="btn btn-secondary btn-sm">Load</button>
-          </div>
-          <!-- Hidden field to store the path that will be submitted -->
-          <input type="hidden" id="source_code_path" name="source_code_path">
-        </div>
-        <div class="form-group">
-          <label for="local_storage_path" class="form-label">Local Storage Path:</label>
-          <input type="text" id="local_storage_path" name="local_storage_path" value="./projects" class="form-control">
-        </div>
-        <!-- File tree preview area -->
-        <div id="fileTreePreview" class="d-none">
-          <h2>Project Files Preview</h2>
-          <div id="fileTreeContainer"></div>
-          <button id="createProjectBtn" type="submit" class="btn btn-success d-none">Create Project</button>
-          <button id="goToDashboardBtn" type="button" class="btn btn-primary d-none" onclick="window.location.href='{{ url_for('project_dashboard') }}'">Go to Dashboard</button>
-        </div>
-      </form>
+      <p>Use the main panel to select or create a project.</p>
     </div>
+
     <div class="app-content"> <!-- Content Area -->
-      <h1>Welcome to the Code Summarization App</h1>
-      <p>Select an existing project from the sidebar or create a new project using the form.</p>
-      <p>
-        After selecting a project, you will be prompted to review and customize the list of processable files.
-        If a summary already exists, the app will display its status. Should any files be modified
-        without an updated summary, you will be given an option to generate summaries for those files only.
-      </p>
-    </div>
-  </div>
-  
+      <h1>Code Assistant Project Manager</h1>
+
+      <!-- Flash Messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div id="flash-messages">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category or 'info' }}" role="alert">
+              {{ message }}
+            </div>
+          {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- Tab Navigation -->
+      <div class="tabs">
+        <button class="tab-link active" onclick="openTab(event, 'selectProjectTab')">Select Existing Project</button>
+        <button class="tab-link" onclick="openTab(event, 'createProjectTab')">Create New Project</button>
+      </div>
+
+      <!-- Tab Content -->
+      <div id="selectProjectTab" class="tab-content active">
+        <h2>Select Existing Project Source</h2>
+        <p>Enter the absolute path to the source code directory of an existing project. The system will create or use a corresponding management directory in <code>{{ default_local_storage }}/&lt;project_name&gt;</code>.</p>
+        <form action="{{ url_for('select_project') }}" method="POST" id="selectProjectForm">
+          <div class="form-group">
+            <label for="source_code_input" class="form-label">Source Code Path:</label>
+            <div style="display: flex;">
+                <input type="text" id="source_code_input" name="source_code_input_display" placeholder="Enter absolute source code path" class="form-control" required>
+                <button type="button" id="loadPathBtn" class="btn btn-secondary btn-sm">Load & Preview</button>
+            </div>
+            <!-- Hidden field to store the path that will be submitted -->
+            <input type="hidden" id="source_code_path" name="source_code_path">
+            <input type="hidden" id="local_storage_path" name="local_storage_path" value="{{ default_local_storage }}">
+          </div>
+
+          <!-- File tree preview area -->
+          <div id="fileTreePreview" style="display: none;">
+            <h3>Project Files Preview</h3>
+            <p>Review the detected code files. Excluded directories (like node_modules, .git) are ignored.</p>
+            <div id="fileTreeContainer" class="file-tree-container">Loading...</div>
+            <button id="createProjectBtn" type="submit" class="btn btn-success mt-3">Select Project</button>
+            <!-- Go to Dashboard button might not be needed here if selection always redirects -->
+            <!-- <button id="goToDashboardBtn" type="button" class="btn btn-primary d-none" onclick="window.location.href='{{ url_for('project_dashboard') }}'">Go to Dashboard</button> -->
+          </div>
+        </form>
+      </div>
+
+      <div id="createProjectTab" class="tab-content">
+        <h2>Create New Empty Project</h2>
+        <p>Provide a name and the desired absolute path for your new project's source code. The directory will be created if it doesn't exist. A management directory will be created at <code>{{ default_local_storage }}/&lt;project_name&gt;</code>.</p>
+        <form action="{{ url_for('create_project') }}" method="POST" id="createProjectForm">
+          <div class="form-group">
+            <label for="project_name" class="form-label">Project Name:</label>
+            <input type="text" id="project_name" name="project_name" placeholder="e.g., my-new-app" class="form-control" required>
+            <small class="form-text text-muted">This name will also be used for the local storage folder.</small>
+          </div>
+          <div class="form-group">
+            <label for="project_path" class="form-label">Source Code Path:</label>
+            <input type="text" id="project_path" name="project_path" placeholder="Enter absolute path for source code (e.g., /Users/me/dev/my-new-app)" class="form-control" required>
+             <small class="form-text text-muted">The directory will be created if it doesn't exist.</small>
+          </div>
+          <button type="submit" class="btn btn-success">Create Empty Project</button>
+        </form>
+      </div>
+
+    </div> <!-- End App Content -->
+  </div> <!-- End App Layout -->
+
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
   <script>
+    // Simple tab switching logic
+    function openTab(evt, tabName) {
+      var i, tabcontent, tablinks;
+      tabcontent = document.getElementsByClassName("tab-content");
+      for (i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = "none";
+        tabcontent[i].classList.remove("active");
+      }
+      tablinks = document.getElementsByClassName("tab-link");
+      for (i = 0; i < tablinks.length; i++) {
+        tablinks[i].classList.remove("active");
+      }
+      document.getElementById(tabName).style.display = "block";
+      document.getElementById(tabName).classList.add("active");
+      evt.currentTarget.classList.add("active");
+    }
+
+    // Keep the existing file preview logic attached to the correct button/form
     document.getElementById('loadPathBtn').addEventListener('click', function() {
-      var sourceCodeInput = document.getElementById('source_code_input').value;
+      var sourceCodeInput = document.getElementById('source_code_input').value.trim();
+      var sourceCodePathHidden = document.getElementById('source_code_path');
+      var fileTreePreviewDiv = document.getElementById('fileTreePreview');
+      var fileTreeContainer = document.getElementById('fileTreeContainer');
+      var createProjectBtn = document.getElementById('createProjectBtn');
+
       if (!sourceCodeInput) {
         alert("Please enter a source code path.");
         return;
       }
-      // Set the hidden field to the entered source code path.
-      document.getElementById('source_code_path').value = sourceCodeInput;
+      // Set the hidden field to the entered source code path for form submission.
+      sourceCodePathHidden.value = sourceCodeInput;
+
+      // Show preview area and loading state
+      fileTreePreviewDiv.style.display = 'block';
+      fileTreeContainer.innerHTML = "Loading file list...";
+      if(createProjectBtn) createProjectBtn.style.display = 'none'; // Hide button until loaded
 
       // Fetch the list of files using the /list_files endpoint.
       fetch('/list_files?source_code_path=' + encodeURIComponent(sourceCodeInput))
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                // Try to parse error json, otherwise use status text
+                return response.json().then(err => { throw new Error(err.error || response.statusText); })
+                                     .catch(() => { throw new Error(response.statusText); });
+            }
+            return response.json();
+        })
         .then(data => {
-          var container = document.getElementById('fileTreeContainer');
-          container.innerHTML = "";
-          if (data.error) {
-            container.innerHTML = "<p>Error: " + data.error + "</p>";
+          fileTreeContainer.innerHTML = ""; // Clear loading message
+          if (data.error) { // Should be caught by !response.ok now, but double check
+            fileTreeContainer.innerHTML = "<p class='text-danger'>Error: " + data.error + "</p>";
           } else if (data.length === 0) {
-            container.innerHTML = "<p>No processable files found.</p>";
+            fileTreeContainer.innerHTML = "<p>No processable code files found in this directory.</p>";
+            if(createProjectBtn) createProjectBtn.style.display = 'block'; // Show button even if empty
           } else {
-            // Build a simple file tree list (you could enhance this to a hierarchical tree if needed)
+            // Build a simple file tree list
             var ul = document.createElement('ul');
+            ul.style.paddingLeft = '0'; // Reset padding for root ul
+            ul.style.listStyleType = 'none';
             data.forEach(function(file) {
               var li = document.createElement('li');
               li.textContent = file.webkitRelativePath;
+              li.style.fontFamily = 'monospace';
+              li.style.fontSize = '0.9em';
               ul.appendChild(li);
             });
-            container.appendChild(ul);
+            fileTreeContainer.appendChild(ul);
+            if(createProjectBtn) createProjectBtn.style.display = 'block'; // Show button
           }
-          // Reveal the file tree preview and the Create Project button.
-          document.getElementById('fileTreePreview').classList.remove('d-none');
-          document.getElementById('createProjectBtn').classList.remove('d-none');
         })
         .catch(error => {
           console.error("Error loading file tree:", error);
+          fileTreeContainer.innerHTML = "<p class='text-danger'>Error loading file tree: " + error.message + "</p>";
+          if(createProjectBtn) createProjectBtn.style.display = 'none'; // Keep button hidden on error
         });
     });
+
+    // Basic validation for create project form
+    document.getElementById('createProjectForm').addEventListener('submit', function(event) {
+        const nameInput = document.getElementById('project_name');
+        const pathInput = document.getElementById('project_path');
+        let isValid = true;
+
+        if (!nameInput.value.trim()) {
+            alert('Project Name cannot be empty.');
+            nameInput.focus();
+            isValid = false;
+        } else if (!/^[a-zA-Z0-9_-]+$/.test(nameInput.value.trim())) {
+            alert('Project Name can only contain letters, numbers, underscores, and hyphens.');
+            nameInput.focus();
+            isValid = false;
+        } else if (!pathInput.value.trim()) {
+            alert('Source Code Path cannot be empty.');
+            pathInput.focus();
+            isValid = false;
+        }
+        // Basic check for absolute path (starts with / or drive letter C:\ etc.)
+        // This is a very basic check and might not cover all OS/edge cases
+        else if (!pathInput.value.startsWith('/') && !/^[a-zA-Z]:\\/.test(pathInput.value)) {
+             alert('Please provide an absolute path for the Source Code Path (e.g., /path/to/project or C:\\path\\to\\project).');
+             pathInput.focus();
+             isValid = false;
+         }
+
+
+        if (!isValid) {
+            event.preventDefault(); // Stop form submission
+        }
+        // If valid, the form will submit normally to /create_project
+    });
+
+    // Dismiss flash messages after a delay
+    setTimeout(function() {
+        let flashMessages = document.getElementById('flash-messages');
+        if (flashMessages) {
+            flashMessages.style.transition = 'opacity 1s ease';
+            flashMessages.style.opacity = '0';
+            setTimeout(() => { flashMessages.style.display = 'none'; }, 1000); // Remove after fade out
+        }
+    }, 5000); // 5 seconds
+
+
   </script>
-  
-  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>
