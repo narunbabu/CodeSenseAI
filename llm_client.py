@@ -91,7 +91,7 @@ class LLM_Client:
             elif self.llm_service == "google":
                 generation_config = {
                         "temperature": 0.7,
-                        "max_output_tokens": 28192,
+                        "max_output_tokens": 15192,
                     }
 
                 response  = self.client.generate_content(

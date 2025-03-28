@@ -4,6 +4,9 @@ from datetime import datetime
 import os
 import re
 from pathlib import Path
+def safe_filename(name):
+    """Convert a file path into a safe filename by replacing directory separators."""
+    return name.replace('/', '_').replace('\\', '_')
 
 def format_time(timestamp):
     return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')

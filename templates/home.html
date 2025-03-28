@@ -1,3 +1,4 @@
+<!--New templates/index.html  -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,19 +6,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Project Home</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    /* Optionally add any extra styles for the file tree preview */
+    #fileTreeContainer ul {
+      list-style: none;
+      padding-left: 20px;
+    }
+    #fileTreeContainer li {
+      margin: 3px 0;
+    }
+  </style>
 </head>
 <body>
   <div class="app-layout"> <!-- Use app layout -->
     <div class="app-sidebar"> <!-- Sidebar -->
       <h2>Existing Projects</h2>
-      <ul class="list-unstyled"> <!-- Use list-unstyled -->
+      <ul class="list-unstyled">
         {% for project in projects %}
           <li>
             <a href="{{ url_for('select_project') }}?source_code_path={{ project.source_code_path }}&local_storage_path={{ project.local_storage_path }}">
               {{ project.project_name }}
             </a>
             {% if project.has_summary %}
-              <span class="project-status has-summary">✓ Summary</span> <!-- Add has-summary class -->
+              <span class="project-status has-summary">✓ Summary</span>
             {% else %}
               <span class="project-status">No Summary</span>
             {% endif %}
@@ -29,7 +40,7 @@
       <form action="{{ url_for('select_project') }}" method="POST" id="projectForm">
         <div class="form-group">
           <label for="source_code_input" class="form-label">Enter Source Code Path:</label>
-          <div style="display: flex;"> <!-- Flex container for input and button -->
+          <div style="display: flex;">
               <input type="text" id="source_code_input" name="source_code_input" placeholder="Enter absolute source code path" class="form-control" required>
               <button type="button" id="loadPathBtn" class="btn btn-secondary btn-sm">Load</button>
           </div>
@@ -41,11 +52,11 @@
           <input type="text" id="local_storage_path" name="local_storage_path" value="./projects" class="form-control">
         </div>
         <!-- File tree preview area -->
-        <div id="fileTreePreview" class="d-none"> <!-- Use d-none utility class -->
+        <div id="fileTreePreview" class="d-none">
           <h2>Project Files Preview</h2>
-          <div id="fileTreeContainer"></div> <!-- Style applied via CSS -->
-          <button id="createProjectBtn" type="submit" class="btn btn-success d-none">Create Project</button> <!-- Use d-none -->
-          <button id="goToDashboardBtn" type="button" class="btn btn-primary d-none" onclick="window.location.href='{{ url_for('project_dashboard') }}'">Go to Dashboard</button> <!-- Use d-none -->
+          <div id="fileTreeContainer"></div>
+          <button id="createProjectBtn" type="submit" class="btn btn-success d-none">Create Project</button>
+          <button id="goToDashboardBtn" type="button" class="btn btn-primary d-none" onclick="window.location.href='{{ url_for('project_dashboard') }}'">Go to Dashboard</button>
         </div>
       </form>
     </div>
@@ -59,6 +70,47 @@
       </p>
     </div>
   </div>
+  
+  <script>
+    document.getElementById('loadPathBtn').addEventListener('click', function() {
+      var sourceCodeInput = document.getElementById('source_code_input').value;
+      if (!sourceCodeInput) {
+        alert("Please enter a source code path.");
+        return;
+      }
+      // Set the hidden field to the entered source code path.
+      document.getElementById('source_code_path').value = sourceCodeInput;
+
+      // Fetch the list of files using the /list_files endpoint.
+      fetch('/list_files?source_code_path=' + encodeURIComponent(sourceCodeInput))
+        .then(response => response.json())
+        .then(data => {
+          var container = document.getElementById('fileTreeContainer');
+          container.innerHTML = "";
+          if (data.error) {
+            container.innerHTML = "<p>Error: " + data.error + "</p>";
+          } else if (data.length === 0) {
+            container.innerHTML = "<p>No processable files found.</p>";
+          } else {
+            // Build a simple file tree list (you could enhance this to a hierarchical tree if needed)
+            var ul = document.createElement('ul');
+            data.forEach(function(file) {
+              var li = document.createElement('li');
+              li.textContent = file.webkitRelativePath;
+              ul.appendChild(li);
+            });
+            container.appendChild(ul);
+          }
+          // Reveal the file tree preview and the Create Project button.
+          document.getElementById('fileTreePreview').classList.remove('d-none');
+          document.getElementById('createProjectBtn').classList.remove('d-none');
+        })
+        .catch(error => {
+          console.error("Error loading file tree:", error);
+        });
+    });
+  </script>
+  
   <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>

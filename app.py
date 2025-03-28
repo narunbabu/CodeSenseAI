@@ -1,8 +1,10 @@
-# app.py
+
+# new app.py
+
 import os
 import json
 import time
-import uuid  # Ensure uuid is imported
+import uuid
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
@@ -10,8 +12,9 @@ from project_manager import ProjectManager
 from code_summarizer import CodeSummarizer
 from query_handler import QueryHandler
 from modification_handler import ModificationHandler
-from project_config import ollama_client, openai_client, dsv3_client, claude_client
-from utils import format_time, load_json, extract_json  # Ensure extract_json is imported if needed directly here
+from project_config import ollama_client, openai_client, dsv3_client, claude_client, google_client
+
+from utils import format_time, load_json, extract_json
 from constants import DEFAULT_EXCLUDES, CODE_EXTENSIONS
 
 app = Flask(__name__)
@@ -19,6 +22,7 @@ app.secret_key = os.urandom(24)
 
 # Mapping for available LLM clients
 clients_mapping = {
+    "google": google_client,
     "openai": openai_client,
     "ollama": ollama_client,
     "dsv3": dsv3_client,
@@ -27,24 +31,39 @@ clients_mapping = {
 
 DEFAULT_LOCAL_STORAGE = './projects'
 
+# --- Helper Functions (init_session, format_datetime, nl2br) ---
+# ... (Keep existing helper functions) ...
 def init_session():
     if 'source_projects' not in session:
         session['source_projects'] = []
     if 'current_source_project' not in session:
         session['current_source_project'] = None
     if 'temp_id' not in session:
-        session['temp_id'] = None
+        session['temp_id'] = None # This might be redundant if current_temp_id is used
+    if 'current_temp_id' not in session:
+        session['current_temp_id'] = None
+
 @app.template_filter('format_datetime')
 def format_datetime(value, format='%Y-%m-%d %H:%M'):
     try:
         return value.strftime(format)
     except AttributeError:
         return 'N/A'
+
+# @app.template_filter('nl2br')
+# def nl2br(value):
+#     """Convert newlines to <br> tags for HTML output."""
+#     # Be careful using this on pre-formatted code/diffs
+#     # return value.replace('\\n', '<br>') # Might be better handled by CSS white-space: pre-wrap
+#     import jinja2
+#     return jinja2.Markup(value.replace('\n', '<br>\n'))
 @app.template_filter('nl2br')
 def nl2br(value):
     """Convert newlines to <br> tags for HTML output."""
     return value.replace('\n', '<br>')
 
+# --- Routes (home, select_project, build_file_tree, list_files, project_files, update_file_selection) ---
+# ... (Keep existing routes, assuming they are correct) ...
 @app.route("/", methods=["GET"])
 def home():
     init_session()
@@ -87,52 +106,40 @@ def select_project():
             session['current_source_project'] = project_info
             print(f"project_info: {project_info}\n")
             return redirect(url_for("project_dashboard"))
-    else:
+    else: # POST
         source_code_path = request.form.get("source_code_path", "")
         local_storage_path = request.form.get("local_storage_path", DEFAULT_LOCAL_STORAGE)
+
     print(f"source_code_path: {source_code_path}\nlocal_storage_path: {local_storage_path}")
-    
+
     if not source_code_path:
         flash("No source code path provided", "error")
         return redirect(url_for("home"))
-    
+
     # Create full project directory and pass it to the ProjectManager
     project_dir = Path(local_storage_path) / Path(source_code_path).name
     project_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Initialize ProjectManager with the full project directory
     project_manager = ProjectManager(source_code_path, str(project_dir))
-    
+
     # If file selection is submitted, update file exclusion and selection info
-    if request.method == "POST" and "selected_files" in request.form:
-        selected_files = request.form.getlist("selected_files")
-        processable_files = []
-        for root, dirs, files in os.walk(source_code_path):
-            dirs[:] = [d for d in dirs if d not in DEFAULT_EXCLUDES]
-            for file in files:
-                ext = os.path.splitext(file)[1]
-                if ext in CODE_EXTENSIONS:
-                    full_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(full_path, source_code_path)
-                    processable_files.append(relative_path)
-        # Also build the file tree selection information
-        file_tree = build_file_tree([{"relative_path": f, "checked": (f in selected_files)} for f in processable_files])
-        
-        project_record = project_manager.get_project_record() or {}
-        project_record["file_selection"] = file_tree
-        # Ensure that the project record is fully serializable
-        project_manager.update_project_record(project_record)
-    
+    # This part seems related to initial setup, might not be hit often in POST here?
+    # if request.method == "POST" and "selected_files" in request.form:
+    #     selected_files = request.form.getlist("selected_files")
+    #     # ... logic to update project record based on selected_files ...
+    #     # This seems more relevant for /update_file_selection route
+
     source_project_info = project_manager.get_project_info()
     for key, value in source_project_info.items():
         if isinstance(value, Path):
             source_project_info[key] = str(value)
     session['current_source_project'] = source_project_info
     print(f"source_project_info saved in session: {source_project_info}\n")
-    if request.method == "POST":
-        return redirect(url_for("project_files"))
-    else:
-        return redirect(url_for("project_dashboard"))
+
+    # Always redirect to dashboard after selecting/creating project info
+    return redirect(url_for("project_dashboard"))
+
 
 def build_file_tree(processable_files):
     """
@@ -148,7 +155,9 @@ def build_file_tree(processable_files):
         if not relative_path:
             continue  # Skip if path is empty
 
-        parts = relative_path.split(os.sep)
+        # Normalize path separators for consistency
+        relative_path = relative_path.replace('\\', '/')
+        parts = relative_path.split('/')
 
         # Skip if any part is in excluded folders
         if any(part in excluded_folders for part in parts):
@@ -156,29 +165,34 @@ def build_file_tree(processable_files):
 
         current = tree
         for index, part in enumerate(parts):
-            if index == len(parts) - 1:
+            if index == len(parts) - 1: # It's a file
                 current[part] = {
                     "type": "file",
                     "name": part,
-                    "relative_path": relative_path,
+                    "relative_path": relative_path, # Store normalized path
                     "checked": file_info.get('checked', False)
                 }
-            else:
+            else: # It's a folder
                 if part not in current:
                     current[part] = {
                         "type": "folder",
                         "name": part,
                         "children": {}
                     }
+                # Handle potential conflict: path part exists but is a file
                 if current[part]["type"] == "folder":
                     current = current[part]["children"]
                 else:
-                    print(f"Warning: Path conflict in build_file_tree for {relative_path} at part '{part}'")
+                    print(f"Warning: Path conflict in build_file_tree for {relative_path} at part '{part}' - expected folder, found file.")
+                    # Decide how to handle: skip, overwrite, log? Skipping for now.
                     break
 
+    # Convert nested dictionary to list structure for easier template rendering
     def dict_to_list(d):
         lst = []
-        for key in sorted(d.keys()):
+        # Sort keys to ensure consistent order (folders first, then files, alphabetically)
+        sorted_keys = sorted(d.keys(), key=lambda k: (d[k].get("type", "file") == "folder", k))
+        for key in sorted_keys:
             node = d[key]
             if node.get("type") == "folder":
                 lst.append({
@@ -202,16 +216,24 @@ def list_files():
 
     files_list = []
     for root, dirs, files in os.walk(source_code_path):
+        # Exclude specified directories
         dirs[:] = [d for d in dirs if d not in DEFAULT_EXCLUDES]
+        # Filter root path itself if it contains excluded parts (less common, but possible)
+        rel_root = os.path.relpath(root, source_code_path)
+        if any(part in DEFAULT_EXCLUDES for part in Path(rel_root).parts):
+            continue
+
         for file in files:
             ext = os.path.splitext(file)[1]
             if ext in CODE_EXTENSIONS:
                 full_path = os.path.join(root, file)
-                relative_path = os.path.relpath(full_path, source_code_path)
-                files_list.append({
-                    "webkitRelativePath": relative_path,
-                    "name": file
-                })
+                relative_path = os.path.relpath(full_path, source_code_path).replace('\\', '/')
+                # Double-check exclusion based on relative path parts
+                if not any(part in DEFAULT_EXCLUDES for part in Path(relative_path).parts):
+                    files_list.append({
+                        "webkitRelativePath": relative_path, # Use normalized path
+                        "name": file
+                    })
     return jsonify(files_list)
 
 @app.route("/project_files", methods=["GET"])
@@ -224,24 +246,53 @@ def project_files():
     source_code_path = current_source_project['source_code_path']
     pm = ProjectManager(source_code_path, current_source_project['local_storage_path'])
     project_record = pm.get_project_record() or {}
-    project_wide_excludes = project_record.get("project_wide_excludes", [])
-    processable_files = []
+
+    # --- Determine which files are currently selected/checked ---
+    # Option 1: Use saved file_selection tree if available
+    saved_file_tree = project_record.get("file_selection")
+    checked_files_from_record = set()
+    if isinstance(saved_file_tree, list):
+        def extract_checked(nodes):
+            checked = set()
+            for node in nodes:
+                if isinstance(node, dict):
+                    if node.get("type") == "file" and node.get("checked") and node.get("relative_path"):
+                        checked.add(str(node["relative_path"]).replace('\\', '/'))
+                    elif node.get("type") == "folder":
+                        checked.update(extract_checked(node.get("children", [])))
+            return checked
+        checked_files_from_record = extract_checked(saved_file_tree)
+
+    # Option 2: Fallback or default - assume all non-excluded files are checked initially
+    # Let's use the saved state primarily. If no saved state, default to checking all valid files.
+
+    processable_files_info = []
     for root, dirs, files in os.walk(source_code_path):
         dirs[:] = [d for d in dirs if d not in DEFAULT_EXCLUDES]
+        rel_root = os.path.relpath(root, source_code_path)
+        if any(part in DEFAULT_EXCLUDES for part in Path(rel_root).parts):
+            continue
+
         for file in files:
-            print(file)
             ext = os.path.splitext(file)[1]
             if ext in CODE_EXTENSIONS:
                 full_path = os.path.join(root, file)
-                relative_path = os.path.relpath(full_path, source_code_path)
-                is_excluded = relative_path in project_wide_excludes
-                processable_files.append({
-                    "relative_path": relative_path,
-                    "checked": not is_excluded
-                })
-    file_tree = build_file_tree(processable_files)
-    print(file_tree)
+                relative_path = os.path.relpath(full_path, source_code_path).replace('\\', '/')
+
+                if not any(part in DEFAULT_EXCLUDES for part in Path(relative_path).parts):
+                    # Determine checked status: use saved record if available, else default to True
+                    is_checked = (relative_path in checked_files_from_record) if checked_files_from_record else True
+                    processable_files_info.append({
+                        "relative_path": relative_path,
+                        "checked": is_checked
+                    })
+
+    # Build the tree structure based on the collected files and their checked status
+    file_tree = build_file_tree(processable_files_info)
+    # print(file_tree) # Debugging
+
     return render_template("project_files.html", source_project=current_source_project, file_tree=file_tree)
+
 
 @app.route("/update_file_selection", methods=["POST"])
 def update_file_selection():
@@ -250,26 +301,47 @@ def update_file_selection():
     if not current_source_project:
          flash("No source project selected", "error")
          return redirect(url_for("home"))
+
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-    processable_files = []
+    selected_files_paths = set(request.form.getlist("selected_files")) # Get paths of checked files
+
+    # Regenerate the list of all potentially processable files to compare against
+    all_processable_files = []
     for root, dirs, files in os.walk(current_source_project['source_code_path']):
         dirs[:] = [d for d in dirs if d not in DEFAULT_EXCLUDES]
+        rel_root = os.path.relpath(root, current_source_project['source_code_path'])
+        if any(part in DEFAULT_EXCLUDES for part in Path(rel_root).parts):
+            continue
+
         for file in files:
             ext = os.path.splitext(file)[1]
             if ext in CODE_EXTENSIONS:
                 full_path = os.path.join(root, file)
-                relative_path = os.path.relpath(full_path, current_source_project['source_code_path'])
-                processable_files.append(relative_path)
-    selected_files = request.form.getlist("selected_files")
-    project_wide_excludes = [f for f in processable_files if f not in selected_files]
-    file_tree = build_file_tree([{"relative_path": f, "checked": (f in selected_files)} for f in processable_files])
-    
+                relative_path = os.path.relpath(full_path, current_source_project['source_code_path']).replace('\\', '/')
+                if not any(part in DEFAULT_EXCLUDES for part in Path(relative_path).parts):
+                     all_processable_files.append({
+                         "relative_path": relative_path,
+                         # Mark as checked if it was submitted in the form
+                         "checked": (relative_path in selected_files_paths)
+                     })
+
+    # Build the file tree structure reflecting the new selection
+    file_tree = build_file_tree(all_processable_files)
+
+    # Update the project record
     project_record = pm.get_project_record() or {}
     project_record["file_selection"] = file_tree
+    # Optional: Could also store project_wide_excludes derived from this, but the tree itself holds the state.
+    # project_wide_excludes = [f["relative_path"] for f in all_processable_files if not f["checked"]]
+    # project_record["project_wide_excludes"] = project_wide_excludes
     pm.update_project_record(project_record)
+
     flash("File selection updated", "success")
     return redirect(url_for("project_dashboard"))
 
+
+# --- Routes (project_dashboard, refresh_project, combined_summary, summarize_project) ---
+# ... (Keep existing routes, assuming they are correct) ...
 @app.route("/project_dashboard", methods=["GET", "POST"])
 def project_dashboard():
     init_session()
@@ -285,7 +357,7 @@ def project_dashboard():
     if request.method == "POST":
         # --- Handle Query Submission from Dashboard ---
         input_query = request.form.get("input_query", "")
-        client_type = request.form.get("client_type", "openai")
+        client_type = request.form.get("client_type", "openai") # Default to openai if not specified
 
         if not input_query:
             flash("Query cannot be empty.", "warning")
@@ -295,6 +367,11 @@ def project_dashboard():
             flash("Please summarize the source code first before querying.", "error")
             return redirect(url_for("project_dashboard"))
 
+        # Ensure selected client exists
+        if client_type not in clients_mapping:
+             flash(f"Invalid client type '{client_type}' selected. Using default.", "warning")
+             client_type = "openai" # Or your preferred default
+
         qh = QueryHandler(pm, clients_mapping)
         try:
             query_id = qh.process_query(input_query, client_type)
@@ -303,11 +380,13 @@ def project_dashboard():
                 # Redirect to the detail page for the new query
                 return redirect(url_for("query_detail", query_id=query_id))
             else:
-                flash("Failed to process query (QueryHandler returned None).", "error")
+                # More specific error? Check qh.process_query potential return values/exceptions
+                flash("Failed to process query (QueryHandler returned None or empty ID). Check logs.", "error")
                 return redirect(url_for("project_dashboard"))
         except Exception as e:
             flash(f"An error occurred while processing the query: {str(e)}", "error")
-            print(f"Error processing query: {e}")
+            print(f"Error processing query: {e}") # Log the full error
+            # Consider logging traceback: import traceback; traceback.print_exc()
             return redirect(url_for("project_dashboard"))
         # --- End Query Submission Handling ---
 
@@ -323,7 +402,8 @@ def project_dashboard():
                            source_project=current_source_project,
                            summary_status=summary_status,
                            query_history=query_history, # Pass the filtered history
-                           summary=summary_data) # Pass the full summary data
+                           summary=summary_data, # Pass the full summary data
+                           available_clients=list(clients_mapping.keys())) # Pass client names
 
 @app.route("/refresh_project", methods=["POST"])
 def refresh_project():
@@ -335,20 +415,31 @@ def refresh_project():
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
     modified_files = pm.get_modified_files()  # This updates file_hashes.json and returns list.
     if modified_files:
-         flash(f"{len(modified_files)} file(s) changed. Please update summaries.", "info")
+         flash(f"{len(modified_files)} file(s) changed since last check. Consider updating summaries.", "info")
     else:
-         flash("No changes detected.", "info")
+         flash("No file changes detected since last check.", "info")
+    # Update the status in the project record after check
+    pm.update_project_record({"status": "checked", "last_checked": datetime.now().isoformat()})
     return redirect(url_for("project_dashboard"))
 
 @app.route("/combined_summary")
 def combined_summary():
     current_source_project = session.get('current_source_project')
     if not current_source_project:
-        return "No source project selected", 404
+        flash("No source project selected", "error")
+        return redirect(url_for("home")) # Redirect home if no project
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
     if not pm.combined_json_path.exists():
-        return "Summary not found", 404
-    summary_data = load_json(str(pm.combined_json_path))
+        flash("Combined summary file not found.", "warning")
+        return redirect(url_for("project_dashboard")) # Redirect dashboard if no summary
+    try:
+        summary_data = load_json(str(pm.combined_json_path))
+        if not summary_data:
+             raise ValueError("Summary file is empty or invalid JSON.")
+    except Exception as e:
+        flash(f"Error loading summary data: {e}", "error")
+        return redirect(url_for("project_dashboard"))
+
     return render_template("combined_summary.html", source_project=current_source_project, summary=summary_data)
 
 @app.route("/summarize_project", methods=["POST"])
@@ -362,45 +453,50 @@ def summarize_project():
     source_code_path = current_source_project['source_code_path']
     local_storage_path = current_source_project['local_storage_path']
     only_modified = request.form.get("only_modified", "false") == "true"
-    client_type = request.form.get("client_type", "openai")
+    client_type = request.form.get("client_type", "openai") # Default to openai
     print(f"Client selected for summarization: {client_type}")
 
-    client = clients_mapping.get(client_type, openai_client) # Use mapping, fallback to openai
-    # Consider if a different fallback is desired or if error should be raised
-    if client_type not in clients_mapping:
-        flash(f"Warning: Client type '{client_type}' not found, using default.", "warning")
+    client = clients_mapping.get(client_type)
+    if not client:
+        flash(f"Warning: Client type '{client_type}' not found, using default (OpenAI).", "warning")
+        client = clients_mapping.get("openai") # Fallback explicitly
+        client_type = "openai" # Update type for flashing message
 
-    # The 'fallout_client' in CodeSummarizer seems unused based on get_llm_response_with_timeout logic.
-    # Let's simplify its initialization if fallout_client is indeed handled internally by get_llm_response_with_timeout's fallback.
-    # If CodeSummarizer needs a specific fallback client instance, pass it here.
-    # Assuming get_llm_response_with_timeout handles fallback internally for now.
+    # Initialize Summarizer with the selected client
     summarizer = CodeSummarizer(api_key=None, # API key managed by client instances
-                                ollama_client=client, # Pass the selected client here
-                                # fallout_client=openai_client # Pass fallback if CodeSummarizer uses it explicitly
-                                )
+                                ollama_client=client # Pass the selected client
+                                # fallout_client=... # Define fallback if needed by Summarizer
+                               )
     pm = ProjectManager(source_code_path, local_storage_path)
     start_time = time.time()
-    flash(f"Starting source code summarization using {client_type} at {format_time(start_time)}", "info")
+    flash(f"Starting source code summarization using {client_type} at {format_time(start_time)}...", "info")
+    # Update project status immediately
+    pm.update_project_record({"status": "summarizing", "last_summary_start": datetime.now().isoformat()})
 
     results = None # Initialize results
+    status_message = ""
+    status_category = "info"
+
     try:
         if only_modified:
-            # get_modified_files updates hashes and returns list
-            modified_files = pm.get_modified_files()
+            modified_files = pm.get_modified_files() # updates hashes
             if not modified_files:
-                flash("No modified files detected since last summary/check.", "info")
-                # No need to redirect here, let it fall through to update record below
-                # return redirect(url_for("project_dashboard")) # Old logic
+                status_message = "No modified files detected since last summary/check. Summaries are up-to-date."
+                status_category = "info"
+                pm.update_project_record({"status": "summarized"}) # Mark as summarized if no changes
             else:
                 flash(f"Updating summaries for {len(modified_files)} modified file(s)...", "info")
-                # update_modified_summaries now handles saving and project summary refresh internally
+                # update_modified_summaries handles saving and project summary refresh
                 results = pm.update_modified_summaries(modified_files, summarizer)
-                if results is None: # Check if update failed
-                     flash("Failed to update summaries for modified files.", "error")
+                if results is None: # Check if update failed internally
+                     status_message = "Attempted to update summaries, but process failed or yielded no results. Check logs."
+                     status_category = "error"
+                     pm.update_project_record({"status": "error"})
+                # else: results were generated, success message below
 
         else: # Full scan requested
             flash("Performing full project summarization...", "info")
-            project_record = pm.get_project_record()
+            project_record = pm.get_project_record() or {}
             selected_files = []
             # Extract selected files from project record's file_selection tree
             if project_record and isinstance(project_record.get("file_selection"), list):
@@ -410,58 +506,71 @@ def summarize_project():
                           if isinstance(node, dict):
                               if node.get("type") == "file" and node.get("checked"):
                                    rel_path = node.get("relative_path")
-                                   if rel_path: checked.append(str(rel_path)) # Ensure string
+                                   if rel_path: checked.append(str(rel_path).replace('\\','/')) # Ensure string, normalize
                               elif node.get("type") == "folder":
+                                   # Recursively check children only if the folder itself implies inclusion
+                                   # (Current logic includes file if checked, implicitly includes folders containing checked files)
                                    checked.extend(extract_checked_files(node.get("children", [])))
-                     return checked
+                     return list(set(checked)) # Return unique list
                  selected_files = extract_checked_files(project_record["file_selection"])
 
             if not selected_files:
-                 flash("No files selected in project settings. Performing scan based on default extensions/exclusions.", "warning")
+                 flash("No files explicitly selected in project settings. Summarizing all detected code files based on extensions/exclusions.", "warning")
                  # scan_project generates file summaries and project summary
-                 results = summarizer.scan_project(source_code_path)
+                 results = summarizer.scan_project(source_code_path, output_dir=pm.summaries_dir)
             else:
                  flash(f"Summarizing {len(selected_files)} selected files...", "info")
                  # scan_specific_files generates file summaries and project summary for the selection
-                 results = summarizer.scan_specific_files(source_code_path, selected_files)
+                 results = summarizer.scan_specific_files(source_code_path, selected_files, output_dir=pm.summaries_dir)
 
             # Save results from full scan or specific files scan
             # update_modified_summaries saves internally, so only save here for full/specific scans
             if results and not only_modified:
-                 pm.save_results(results) # save_results now also updates project record
+                 # pm.save_results(results) # save_results updated hashes, combined summary, project record
+                 # Refactored: scan methods now save individual summaries. Need to combine and update record.
+                 pm.combine_summaries() # Combine individual json files
+                 pm.update_file_hashes() # Update hashes based on current files
+                 pm.update_project_record({ # Update record after successful full/specific scan
+                     "status": "summarized",
+                     "last_summary_end": datetime.now().isoformat(),
+                     "summary_client": client_type
+                 })
+
 
         elapsed = time.time() - start_time
-        # Success/completion message depends on whether results were generated
-        if results:
-            flash(f"Source code summarization completed in {elapsed:.2f} seconds", "success")
-            # Project record is updated within save_results or update_modified_summaries
-        elif not only_modified: # If full/specific scan yielded no results
-            flash("Summarization process did not produce results.", "warning")
-        # If only_modified and no files needed update, message was already flashed
-
-        # -------------------------------------------------------------------- #
-        # --- REMOVED Query History Update for Summarization Runs ---
-        # The following block that created 'summary_entry' and saved it to
-        # query history has been removed as per the requirement.
-        #
-        # summary_entry = { ... }
-        # history = pm.load_query_history()
-        # history.append(summary_entry)
-        # pm.save_query_history(history)
-        # -------------------------------------------------------------------- #
+        # Final status message based on whether results were generated/updated
+        if results is not None: # Covers both modified and full/specific scans that yielded results
+            status_message = f"Source code summarization/update completed in {elapsed:.2f} seconds using {client_type}."
+            status_category = "success"
+            # Project record update for 'summarized' status happens within update_modified_summaries or above for full scan
+        elif status_category != "error" and not only_modified: # If full/specific scan yielded no results
+            status_message = "Summarization process finished but did not produce results (perhaps no code files found or selected?)."
+            status_category = "warning"
+            pm.update_project_record({"status": "error"}) # Or maybe 'empty'?
+        elif status_category == "info": # Case where only_modified=True and no files were modified
+             pass # Message already set
+        else: # Catch-all if no message set yet (shouldn't happen ideally)
+             status_message = f"Summarization process finished in {elapsed:.2f} seconds, but outcome unclear."
+             status_category = "warning"
 
     except Exception as e:
-        flash(f"An error occurred during summarization: {str(e)}", "error")
-        print(f"Summarization Error: {e}")
-        # Optionally update project record status to error
+        elapsed = time.time() - start_time
+        status_message = f"An error occurred during summarization after {elapsed:.2f} seconds: {str(e)}"
+        status_category = "error"
+        print(f"Summarization Error: {e}") # Log the full error
+        # import traceback; traceback.print_exc() # For detailed debugging
+        # Update project record status to error
         try:
-             pm.update_project_record({"status": "error"})
+             pm.update_project_record({"status": "error", "last_summary_end": datetime.now().isoformat()})
         except Exception as update_err:
              print(f"Failed to update project record status after error: {update_err}")
 
-
+    flash(status_message, status_category)
     return redirect(url_for("project_dashboard"))
 
+
+# --- Routes (query, query_detail, delete_query) ---
+# ... (Keep existing routes, assuming they are correct) ...
 @app.route("/query", methods=["GET", "POST"])
 def query():
     init_session()
@@ -473,7 +582,7 @@ def query():
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
 
     if not pm.has_summary():
-        flash("Please summarize the source code first", "error")
+        flash("Please summarize the source code first before querying.", "error")
         return redirect(url_for("project_dashboard"))
 
     if request.method == "POST":
@@ -482,7 +591,11 @@ def query():
 
         if not input_query:
             flash("Query cannot be empty.", "warning")
-            return redirect(url_for("query"))
+            return redirect(url_for("query")) # Redirect back to query page
+
+        if client_type not in clients_mapping:
+             flash(f"Invalid client type '{client_type}' selected. Using default.", "warning")
+             client_type = "openai"
 
         qh = QueryHandler(pm, clients_mapping)
         try:
@@ -491,15 +604,20 @@ def query():
                 flash("Query processed. Review the details below.", "info")
                 return redirect(url_for("query_detail", query_id=query_id))
             else:
-                flash("Failed to process query.", "error")
+                flash("Failed to process query (QueryHandler returned None or empty ID). Check logs.", "error")
                 return redirect(url_for("query"))
         except Exception as e:
             flash(f"An error occurred while processing the query: {str(e)}", "error")
             print(f"Error processing query: {e}")
+            # import traceback; traceback.print_exc()
             return redirect(url_for("query"))
 
+    # GET request: Load history and render query page
     history = pm.load_query_history()
-    return render_template("query.html", history=history, source_project=current_source_project)
+    return render_template("query.html",
+                           history=history,
+                           source_project=current_source_project,
+                           available_clients=list(clients_mapping.keys()))
 
 @app.route("/query/<query_id>")
 def query_detail(query_id):
@@ -510,50 +628,50 @@ def query_detail(query_id):
         return redirect(url_for("home"))
 
     try:
-        # Assuming ProjectManager requires these paths
         pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
         history = pm.load_query_history() # Expecting a list of dictionaries
     except Exception as e:
         flash(f"Error loading project data: {e}", "error")
-        # Redirect to a more appropriate place if PM fails, maybe dashboard
         return redirect(url_for("project_dashboard")) # Or url_for("home")
 
-    # Find the dictionary entry using .get() for safer key access in the loop
+    # Find the dictionary entry using .get() for safer key access
     entry = next((item for item in history if item.get("id") == query_id), None)
 
-    # --- Check if entry was found ---
     if not entry:
         flash(f"Query with ID '{query_id}' not found in history.", "warning")
-        # Redirect to the project dashboard or query list page might be better
-        return redirect(url_for("project_dashboard")) # Or wherever query history is listed
+        return redirect(url_for("project_dashboard")) # Or query list page
 
-    # --- Timestamp Conversion Logic ---
-    # Define the format your timestamp *string* is expected to be in
-    # Example: '2023-10-27 10:30:00.123456' -> "%Y-%m-%d %H:%M:%S"
-    # Example: '2023-10-27 10:30:00' -> "%Y-%m-%d %H:%M:%S"
-    timestamp_format = "%Y-%m-%d %H:%M:%S" # ADJUST THIS FORMAT if necessary based on your actual string data
-
-    timestamp_value = entry.get('timestamp') # Safely get the timestamp value
-
-    if isinstance(timestamp_value, str): # Check if it's a string that needs conversion
+    # --- Timestamp Conversion Logic (if needed, seems less critical now) ---
+    timestamp_value = entry.get('timestamp')
+    if isinstance(timestamp_value, str):
+        # Attempt to parse ISO format first, then fallback
+        parsed_time = None
         try:
-            # Convert the string to a datetime object and update the dictionary
-            entry['timestamp'] = datetime.strptime(timestamp_value, timestamp_format)
-        except (ValueError, TypeError) as e:
-            # Handle cases where conversion fails (e.g., wrong format, invalid date)
-            print(f"Warning: Could not parse timestamp string '{timestamp_value}'. Error: {e}")
-            entry['timestamp'] = None # Set to None if conversion fails
-    # If timestamp_value is already a datetime object, None, or the key doesn't exist,
-    # entry['timestamp'] will either retain its original non-string value or remain None.
+            # Python 3.7+ supports fromisoformat directly
+            parsed_time = datetime.fromisoformat(timestamp_value)
+        except ValueError:
+            # Fallback to common formats if ISO fails
+            for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    parsed_time = datetime.strptime(timestamp_value, fmt)
+                    break
+                except ValueError:
+                    pass
+        if parsed_time:
+             entry['timestamp'] = parsed_time
+        else:
+             print(f"Warning: Could not parse timestamp string '{timestamp_value}'. Displaying as is.")
+             # Keep original string if parsing fails, template filter can handle it
+    # If it's already a datetime object or None, it's fine.
 
-    # --- Render Template ---
-    # Pass the modified entry dictionary and history list to the template
     return render_template(
         "query_detail.html",
         entry=entry,
         source_project=current_source_project,
-        queries=history # Pass the full history for the sidebar
+        queries=history, # Pass the full history for the sidebar
+        available_clients=list(clients_mapping.keys()) # For modify dropdown
     )
+
 
 @app.route("/delete_query/<query_id>", methods=["POST"])
 def delete_query(query_id):
@@ -561,11 +679,27 @@ def delete_query(query_id):
     current_source_project = session.get('current_source_project')
     if not current_source_project:
         flash("No source project selected", "error")
+        # Return JSON error response if called via JS, otherwise redirect
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"error": "No project selected"}), 400
         return redirect(url_for("home"))
+
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-    pm.delete_query(query_id)
-    flash("Query deleted successfully", "success")
-    return redirect(url_for("query"))
+    deleted = pm.delete_query(query_id) # Assume returns True if deleted, False otherwise
+
+    if deleted:
+        flash("Query deleted successfully", "success")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"success": True, "redirect": url_for("query")}), 200
+        return redirect(url_for("query")) # Redirect to the main query list
+    else:
+        flash("Query not found or could not be deleted.", "warning")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({"error": "Query not found"}), 404
+        return redirect(url_for("query"))
+
+
+# --- Modification Routes ---
 
 @app.route("/modify/<query_id>", methods=["POST"])
 def modify_files(query_id):
@@ -576,9 +710,17 @@ def modify_files(query_id):
         return redirect(url_for("home"))
 
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-    mod_handler = ModificationHandler(pm, clients_mapping)
-    client_type = request.form.get("client_type", "openai")
+    client_type = request.form.get("client_type", "openai") # Get selected client
 
+    if client_type not in clients_mapping:
+        flash(f"Invalid client type '{client_type}' selected. Using default.", "warning")
+        client_type = "openai"
+
+    mod_handler = ModificationHandler(pm, clients_mapping)
+
+    # prepare_modification_prompt now returns (temp_id, prompt_for_display, small_session_data)
+    # result = mod_handler.prepare_modification_prompt(query_id, client_type)
+# ----
     # prepare_modification_prompt now returns (temp_id, prompt_for_display, small_session_data)
     temp_id, prompt_display, small_data = mod_handler.prepare_modification_prompt(query_id, client_type)
 
@@ -598,130 +740,160 @@ def modify_files(query_id):
 def generate_modifications(query_id):
     init_session()
     current_source_project = session.get('current_source_project')
-    temp_id = session.get('current_temp_id')
+    temp_id = session.get('current_temp_id')  # Get the ID of the current modification process
 
     if not current_source_project or not temp_id:
-        flash("Session data missing. Please start the modification process again.", "error")
+        flash("Session data missing or expired. Please start the modification process again.", "error")
         return redirect(url_for("query_detail", query_id=query_id))
 
-    # Retrieve the SMALL data dictionary from the session
+    # Retrieve the small session data stored earlier using temp_id
     small_session_data = session.get(temp_id)
     if not small_session_data:
         flash(f"Session data missing for modification {temp_id}. Please start again.", "error")
-        session.pop('current_temp_id', None) # Clean up pointer
+        session.pop('current_temp_id', None)
+        session.modified = True
         return redirect(url_for("query_detail", query_id=query_id))
 
-    pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
+    pm = ProjectManager(current_source_project['source_code_path'],
+                        current_source_project['local_storage_path'])
     mod_handler = ModificationHandler(pm, clients_mapping)
 
-    # Pass temp_id and the small session data to process_modifications
+    # Process modifications; this calls the LLM and generates a preview (with diffs for both old and new files)
     result = mod_handler.process_modifications(temp_id, small_session_data)
-    # result is expected to be {'preview': ..., 'llm_response': ..., 'llm_response_time': ...} or None
-
-    if result is None or result.get("preview") is None:
-        flash("Failed to generate modifications. Check logs (LLM call or parsing failed).", "error")
-        # Optionally cleanup temp file here if failure is definitive? Or leave for manual/later cleanup.
-        # mod_handler.cleanup_temp_file(temp_id) # Uncomment to cleanup on failure
-        # session.pop(temp_id, None)
-        # session.pop('current_temp_id', None)
+    if result is None or result.get("error"):
+        error_msg = result.get("error", "Failed to generate modifications. LLM call or response parsing likely failed.")
+        flash(error_msg, "error")
         return redirect(url_for("query_detail", query_id=query_id))
 
-    preview_modifications = result["preview"]
+    preview_modifications = result.get("preview")
+    if preview_modifications is None:
+        flash("Modification generation finished, but no preview data was returned. Check logs.", "warning")
+        return redirect(url_for("query_detail", query_id=query_id))
 
-    # --- IMPORTANT: Store LLM details back into the session's small data dict ---
-    # This makes them available to apply_modifications for the history record
+    # Update session small data with LLM details
     small_session_data['llm_response'] = result.get('llm_response', '')
     small_session_data['llm_response_time'] = result.get('llm_response_time', 0)
-    session[temp_id] = small_session_data # Update the session data
+    session[temp_id] = small_session_data
+    session.modified = True
 
-    modifications_json = json.dumps(preview_modifications)
+    # Save the preview modifications into a JSON file under the current query id.
+    proposed_modifications_dir = os.path.join(current_source_project['local_storage_path'], "proposed_modifications")
+    os.makedirs(proposed_modifications_dir, exist_ok=True)
+    proposed_modifications_file = os.path.join(proposed_modifications_dir, f"{query_id}.json")
+    try:
+        with open(proposed_modifications_file, "w", encoding="utf-8") as f:
+            json.dump(preview_modifications, f, indent=4)
+        app.logger.info(f"Stored proposed modifications to {proposed_modifications_file}")
+    except Exception as e:
+        flash(f"Error saving proposed modifications file: {str(e)}", "error")
+        return redirect(url_for("query_detail", query_id=query_id))
 
+    # Render the preview template without passing modifications_json via the form.
     return render_template("preview_modification.html",
                            query_id=query_id,
-                           modifications=preview_modifications,
-                           modifications_json=modifications_json)
-
-
+                           modifications=preview_modifications)
 @app.route("/accept_modifications/<query_id>", methods=["POST"])
 def accept_modifications(query_id):
     init_session()
     current_source_project = session.get('current_source_project')
     temp_id = session.get('current_temp_id')
+    app.logger.info(f"Current source project: {current_source_project}, Temp ID: {temp_id}")
 
     if not current_source_project or not temp_id:
-        flash("Session data missing. Please start again.", "error")
+        flash("Session data missing or expired. Please start the modification process again.", "error")
         return redirect(url_for("query_detail", query_id=query_id))
 
     small_session_data = session.get(temp_id)
     if not small_session_data:
         flash(f"Session data missing for modification {temp_id}. Please start again.", "error")
         session.pop('current_temp_id', None)
+        session.modified = True
         return redirect(url_for("query_detail", query_id=query_id))
 
-    modifications_json_str = request.form.get("modifications_json")
-
-    # --- DEBUG PRINT ---
-    print("-" * 20)
-    print(f"Received modifications_json string in accept_modifications (temp_id: {temp_id}):")
-    # Print first 500 chars to avoid flooding logs if it's huge
-    print(modifications_json_str[:500] + ("..." if len(modifications_json_str) > 500 else ""))
-    print("-" * 20)
-    # --- END DEBUG PRINT ---
+    # Instead of retrieving the modifications JSON from the form, load it from the stored file.
+    proposed_modifications_dir = os.path.join(current_source_project['local_storage_path'], "proposed_modifications")
+    proposed_modifications_file = os.path.join(proposed_modifications_dir, f"{query_id}.json")
+    if not os.path.exists(proposed_modifications_file):
+        flash("Proposed modifications file not found. Please generate modifications again.", "error")
+        return redirect(url_for("query_detail", query_id=query_id))
 
     try:
-        modifications_to_apply = json.loads(modifications_json_str)
-        # Add more robust validation
-        if not isinstance(modifications_to_apply, list):
-             raise ValueError("Modifications data is not a list.")
-        if not all(isinstance(m, dict) and 'file_path' in m and 'new_code' in m for m in modifications_to_apply):
-             # Find the first invalid item for better debugging
-             invalid_item = next((item for item in modifications_to_apply if not (isinstance(item, dict) and 'file_path' in item and 'new_code' in item)), None)
-             raise ValueError(f"Invalid modification item structure. Problematic item (or first found): {invalid_item}")
-
-    except (json.JSONDecodeError, ValueError, TypeError) as e: # Added TypeError
-        flash(f"Error processing modifications data: {str(e)}", "error")
-        print(f"Error decoding or validating modifications JSON: {e}") # Log the error server-side
-        # Don't clean up session yet, might need to retry or debug
-        return redirect(url_for("query_detail", query_id=query_id)) # Or maybe back to preview?
-
-
-    pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-    mod_handler = ModificationHandler(pm, clients_mapping)
-
-    modification_id = mod_handler.apply_modifications(temp_id, small_session_data, modifications_to_apply)
-
-    # Clean up session data AFTER apply_modifications call (success or failure)
-    session.pop(temp_id, None)
-    session.pop('current_temp_id', None)
-
-    if not modification_id:
-        flash("Failed to apply modifications (check logs). Temp files might still exist if error occurred before cleanup.", "error")
+        with open(proposed_modifications_file, "r", encoding="utf-8") as f:
+            modifications_to_apply = json.load(f)
+    except Exception as e:
+        flash(f"Error reading proposed modifications file: {str(e)}", "error")
         return redirect(url_for("query_detail", query_id=query_id))
 
-    flash("Modifications applied successfully! Summary may need updating.", "success")
-    return redirect(url_for("project_dashboard")) # Redirect to dashboard after success
-# Add a route or logic to handle cancellation and cleanup temp files
-@app.route("/cancel_modification/<query_id>", methods=["POST"]) # Or GET if using a link
+    # Validate the modifications structure
+    if not isinstance(modifications_to_apply, list):
+        flash("Proposed modifications data is not in the expected format.", "error")
+        return redirect(url_for("query_detail", query_id=query_id))
+
+    for idx, m in enumerate(modifications_to_apply):
+        if not isinstance(m, dict):
+            flash(f"Invalid modification item at index {idx}.", "error")
+            return redirect(url_for("query_detail", query_id=query_id))
+        if 'file_path' not in m or not isinstance(m['file_path'], str) or not m['file_path']:
+            flash(f"Modification item at index {idx} missing or invalid 'file_path'.", "error")
+            return redirect(url_for("query_detail", query_id=query_id))
+        if 'new_code' not in m or not isinstance(m['new_code'], str):
+            flash(f"Modification item at index {idx} missing or invalid 'new_code'.", "error")
+            return redirect(url_for("query_detail", query_id=query_id))
+
+    pm = ProjectManager(current_source_project['source_code_path'],
+                        current_source_project['local_storage_path'])
+    mod_handler = ModificationHandler(pm, clients_mapping)
+
+    modification_result = mod_handler.apply_modifications(temp_id, small_session_data, modifications_to_apply)
+
+    # Clean up session keys after applying modifications.
+    session.pop(temp_id, None)
+    session.pop('current_temp_id', None)
+    session.modified = True
+
+    if not modification_result or not modification_result.get("success"):
+        error_msg = modification_result.get("error", "Failed to apply modifications. Check logs for details.")
+        flash(error_msg, "error")
+        return redirect(url_for("query_detail", query_id=query_id))
+
+    new_modification_id = modification_result.get("id")
+    flash(f"Modifications applied successfully (ID: {new_modification_id})! Project summaries may need updating.", "success")
+    return redirect(url_for("project_dashboard"))
+
+
+@app.route("/cancel_modification/<query_id>", methods=["GET", "POST"]) # Allow GET if using a link, POST if using form
 def cancel_modification(query_id):
     init_session()
     temp_id = session.get('current_temp_id')
+
     if temp_id:
-        # Need PM to get handler to cleanup file
+        # Retrieve PM details to instantiate handler for cleanup
         current_source_project = session.get('current_source_project')
         if current_source_project:
-             pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-             mod_handler = ModificationHandler(pm, clients_mapping) # Need mapping just to instantiate
-             mod_handler.cleanup_temp_file(temp_id) # Call cleanup explicitly
+             try:
+                 pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
+                 # Pass mapping just to instantiate, might not be needed for cleanup
+                 mod_handler = ModificationHandler(pm, clients_mapping)
+                 mod_handler.cleanup_temp_file(temp_id) # Call cleanup explicitly
+                 print(f"Cleaned up temp file for cancelled modification: {temp_id}")
+             except Exception as e:
+                 print(f"Error during modification cleanup for {temp_id}: {e}")
+                 flash("Error during cleanup, but cancelling process anyway.", "warning")
 
-        # Clean up session keys regardless
+        # Clean up session keys regardless of cleanup success
         session.pop(temp_id, None)
         session.pop('current_temp_id', None)
+        session.modified = True
         flash("Modification process cancelled.", "info")
     else:
-        flash("No active modification process found to cancel.", "warning")
+        flash("No active modification process found in session to cancel.", "warning")
 
-    # Redirect back to the query detail page
+    # Redirect back to the query detail page where the modification was initiated
     return redirect(url_for('query_detail', query_id=query_id))
+
+
+# --- Modification History Routes ---
+# ... (Keep existing routes: modifications_list, modification_detail, revert_file) ...
 @app.route("/modifications")
 def modifications_list():
     init_session()
@@ -730,7 +902,7 @@ def modifications_list():
         flash("No source project selected", "error")
         return redirect(url_for("home"))
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-    modifications = pm.load_modifications_history()
+    modifications = pm.load_modifications_history() # Expecting list sorted newest first?
     return render_template("modifications.html", modifications=modifications, source_project=current_source_project)
 
 @app.route("/modification/<modification_id>")
@@ -742,13 +914,37 @@ def modification_detail(modification_id):
         return redirect(url_for("home"))
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
     modifications = pm.load_modifications_history()
-    modification = next((item for item in modifications if item["id"] == modification_id), None)
+    modification = next((item for item in modifications if item.get("id") == modification_id), None)
+
     if not modification:
-        flash("Modification not found", "error")
+        flash("Modification record not found", "error")
         return redirect(url_for("modifications_list"))
-    history = pm.load_query_history()
-    query = next((item for item in history if item["id"] == modification["query_id"]), None)
-    return render_template("modification_detail.html", modification=modification, query=query, source_project=current_source_project)
+
+    # Try to find the original query for context
+    query = None
+    query_id = modification.get("query_id")
+    if query_id:
+        history = pm.load_query_history()
+        query = next((item for item in history if item.get("id") == query_id), None)
+
+    # Enhancement: Load diffs for display if not stored directly
+    # This might involve ModificationHandler having a method to regenerate diffs from backups
+    # For now, assume 'applied_modifications' list in the record has enough info or diffs are stored.
+    # Example structure assumed in modification record:
+    # modification = {
+    #    "id": "...", "timestamp": "...", "query_id": "...", "client_type": "...",
+    #    "llm_response": "...", "llm_response_time": ...,
+    #    "applied_modifications": [
+    #        {"file_path": "...", "backup_path": "...", "is_new": True/False, /* maybe diff here? */}, ...
+    #    ]
+    # }
+    # If diffs need generating on the fly, you'd call a handler method here.
+
+    return render_template("modification_detail.html",
+                           modification=modification,
+                           query=query, # Pass found query, can be None
+                           source_project=current_source_project)
+
 
 @app.route("/revert/<modification_id>/<path:file_path>", methods=["POST"])
 def revert_file(modification_id, file_path):
@@ -757,26 +953,26 @@ def revert_file(modification_id, file_path):
     if not current_source_project:
         flash("No source project selected", "error")
         return redirect(url_for("home"))
+
     pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-    mod_handler = ModificationHandler(pm)
+    # Pass mappings if handler needs client info, though likely not for revert
+    mod_handler = ModificationHandler(pm, clients_mapping)
     success = mod_handler.revert_file(modification_id, file_path)
+
     if success:
-        flash(f"Successfully reverted {file_path}", "success")
+        flash(f"Successfully reverted '{file_path}' to its state before modification {modification_id}", "success")
     else:
-        flash(f"Failed to revert {file_path}", "error")
+        flash(f"Failed to revert '{file_path}'. Backup might be missing or an error occurred.", "error")
+
+    # Redirect back to the detail page of the modification being reverted
     return redirect(url_for("modification_detail", modification_id=modification_id))
 
-@app.route("/update_summaries_for_modified", methods=["POST"])
-def update_summaries_for_modified():
-    init_session()
-    current_source_project = session.get('current_source_project')
-    if not current_source_project:
-        flash("No source project selected", "error")
-        return redirect(url_for("home"))
-    flash("Functionality moved to dashboard button submitting to /summarize_project.", "info")
-    return redirect(url_for('project_dashboard'))
 
+# --- Main Execution ---
 if __name__ == "__main__":
-    app.run(debug=os.environ.get("FLASK_DEBUG", True),
-            host=os.environ.get("FLASK_HOST", "127.0.0.1"),
-            port=int(os.environ.get("FLASK_PORT", 5000)))
+    # Use environment variables for config, with defaults
+    host = os.environ.get("FLASK_HOST", "127.0.0.1")
+    port = int(os.environ.get("FLASK_PORT", 5001))
+    debug = os.environ.get("FLASK_DEBUG", "True").lower() in ["true", "1", "yes"]
+    print(f" * Starting Flask server on http://{host}:{port}/ (Debug: {debug})")
+    app.run(debug=debug, host=host, port=port)

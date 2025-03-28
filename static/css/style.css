@@ -694,3 +694,285 @@ form button[type="button"] {
     white-space: pre-wrap; /* Ensure line breaks are respected and text wraps */
     word-wrap: break-word;
 }
+
+
+/* code_summarizer/static/css/style.css */
+/* Additions/Modifications shown below. Assume existing styles are present */
+
+/* --- Base & Reset --- */
+/* ... (existing styles) ... */
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  line-height: 1.6;
+  color: var(--text-color);
+  background-color: var(--light-bg);
+  /* display: flex; Remove default flex here if using container-fluid/app-layout selectively */
+  min-height: 100vh;
+}
+
+/* ... (existing styles for h1-h6, p, a, pre, ul, li, hr) ... */
+pre {
+  background-color: var(--medium-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-unit);
+  font-family: var(--font-family-monospace);
+  white-space: pre-wrap; /* Allow wrapping */
+  word-wrap: break-word; /* Break long words */
+  overflow-x: auto; /* Add scrollbar if needed */
+}
+
+
+/* --- Layout --- */
+.app-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh; /* Ensure layout takes full height */
+}
+
+.app-sidebar {
+  width: var(--sidebar-width);
+  background-color: var(--secondary-color);
+  color: var(--text-light);
+  padding: var(--spacing-unit);
+  flex-shrink: 0; /* Prevent sidebar from shrinking */
+  overflow-y: auto; /* Add scroll if content overflows */
+  height: 100vh; /* Make sidebar full height */
+  position: sticky; /* Keep sidebar visible when content scrolls */
+  top: 0;
+}
+
+.app-content {
+  flex-grow: 1; /* Allow content to take remaining space */
+  padding: var(--spacing-unit);
+  /* background-color: #fff; Let container-fluid handle bg if nested */
+  overflow-y: auto; /* Add scroll if content overflows */
+  /* Remove height: 100vh if app-layout manages height */
+}
+
+/* Container for pages without a sidebar, or wrapper within app-content */
+.container-fluid {
+  width: 100%;
+  max-width: 1400px; /* Wider max-width maybe? */
+  margin: 0 auto;
+  padding: var(--spacing-unit);
+  /* background-color: #fff; /* Give it a background if not inside app-content */
+  /* border-radius: var(--border-radius); */
+  /* box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); */
+  margin-top: var(--spacing-unit); /* Add some top margin */
+}
+/* Adjustments if container-fluid is used INSIDE app-content */
+.app-content > .container-fluid {
+    margin-top: 0;
+    padding: 0; /* Remove padding if app-content already has it */
+    max-width: none; /* Allow it to fill app-content */
+    background-color: #fff; /* Ensure white background */
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    padding: var(--spacing-unit); /* Re-add padding inside */
+
+}
+
+
+/* --- Components --- */
+/* ... (existing button styles .btn, .btn-primary etc.) ... */
+
+/* Forms */
+/* ... (existing form styles) ... */
+
+/* Sidebar specific styles */
+/* ... (existing .app-sidebar h1-h3, ul styles) ... */
+.app-sidebar li a,
+.app-sidebar li button { /* Style buttons used for navigation too */
+  color: var(--light-bg);
+  display: block; /* Make link take full width */
+  padding: 0.5rem 0.75rem; /* More padding */
+  text-decoration: none;
+  border: none; /* Reset button border */
+  background: none; /* Reset button background */
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  font-size: 0.9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.25rem;
+  transition: background-color 0.2s, color 0.2s;
+}
+.app-sidebar li a:hover,
+.app-sidebar li button:hover {
+  color: var(--text-light);
+  text-decoration: none;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.app-sidebar li a.active,
+.app-sidebar li button.active { /* Style for active nav item */
+    background-color: var(--primary-color);
+    color: var(--text-light);
+    font-weight: bold;
+}
+
+/* ... (existing project-status, file-tree styles) ... */
+
+/* --- Specific Page Styles --- */
+
+/* Confirm Prompt Page */
+.prompt-container {
+    max-height: 60vh; /* Limit height */
+    overflow-y: auto; /* Enable vertical scroll */
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-unit);
+    background-color: var(--medium-bg);
+    border-radius: var(--border-radius);
+    margin-top: var(--spacing-unit); /* Space below buttons */
+}
+.prompt-container pre {
+     margin: 0; /* Remove default margin from pre */
+     background: none; /* Inherit background */
+     border: none; /* Remove border from pre */
+     padding: 0; /* Remove padding from pre */
+     font-size: 0.9em; /* Slightly smaller font for prompt */
+     color: var(--text-color); /* Ensure readable text color */
+}
+.action-buttons { /* Container for buttons above prompt */
+     margin-bottom: var(--spacing-unit); /* Space above prompt */
+     padding-bottom: var(--spacing-unit);
+     border-bottom: 1px solid var(--border-color);
+}
+#loading-indicator { /* Style for loading indicator */
+    display: none; /* Hidden by default */
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background-color: var(--warning-color);
+    color: #fff; /* White text on orange */
+    border-radius: var(--border-radius);
+    text-align: center;
+}
+
+
+/* Preview Modification Page */
+.preview-layout {
+    display: flex;
+    /* Adjust height calculation if necessary, depends on header/footer */
+    /* Using flex grow on content usually handles height distribution well */
+    /* height: calc(100vh - 100px); */
+    margin-top: var(--spacing-unit);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: #fff; /* White background for the layout box */
+    overflow: hidden; /* Prevent content spillover */
+}
+.preview-sidebar {
+    width: 300px; /* Fixed width sidebar */
+    flex-shrink: 0;
+    background-color: var(--secondary-color);
+    color: var(--text-light);
+    padding: var(--spacing-unit);
+    overflow-y: auto; /* Scrollbar for file list if needed */
+    border-right: 1px solid var(--border-color);
+    /* height: 100%; /* Let flexbox manage height */
+}
+.preview-content {
+    flex-grow: 1;
+    padding: var(--spacing-unit);
+    overflow-y: auto; /* Makes the main diff content area scrollable */
+    background-color: #fff; /* Background for the content area */
+}
+.preview-sidebar h3 {
+    color: var(--text-light);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 0.5rem;
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-size: 1.1em;
+}
+.preview-sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+/* Using .app-sidebar button styles defined earlier */
+
+.diff-content-item {
+    display: none; /* Hide all by default */
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-unit);
+    background-color: #fdfdfd; /* Very light background for the diff container */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.diff-content-item.active {
+    display: block; /* Show the active one */
+}
+.diff-content-item h2 { /* File path header */
+    font-family: var(--font-family-monospace);
+    background-color: var(--light-bg);
+    padding: 0.75rem var(--spacing-unit);
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+    font-size: 1.1em;
+    margin: 0;
+    border-bottom: 1px solid var(--border-color);
+    word-wrap: break-word; /* Wrap long file paths */
+    color: var(--secondary-color);
+    display: flex; /* Align indicator */
+    justify-content: space-between;
+    align-items: center;
+}
+.diff-content-item pre {
+    margin: 0;
+    border: none; /* Remove border from pre, container has it */
+    border-radius: 0 0 var(--border-radius) var(--border-radius);
+    padding: var(--spacing-unit);
+    background-color: #2b2b2b; /* Dark background for code */
+    color: #f0f0f0; /* Light text for code */
+    font-size: 0.85em; /* Make diff font slightly smaller */
+}
+/* Diff Highlighting */
+.diff-added { background-color: rgba(46, 160, 67, 0.15); color: #c3e6cb; }
+.diff-removed { background-color: rgba(248, 81, 73, 0.1); color: #f5c6cb; }
+.diff-added::before { content: '+ '; padding-right: 5px; }
+.diff-removed::before { content: '- '; padding-right: 5px; }
+/* Style lines starting with ' ' (unchanged context) */
+pre code.diff span:not([class^="diff-"]) {
+    opacity: 0.7; /* Dim unchanged lines slightly */
+}
+
+
+.preview-actions { /* Container for Accept/Cancel buttons */
+    margin-top: var(--spacing-unit);
+    padding-top: var(--spacing-unit);
+    border-top: 1px solid var(--border-color);
+    background-color: #fff; /* Match content bg */
+    padding: var(--spacing-unit);
+    text-align: right; /* Align buttons to the right */
+    border-radius: 0 0 var(--border-radius) var(--border-radius); /* Match container */
+}
+
+.new-file-indicator { /* Style for (New) text */
+    font-style: italic;
+    color: var(--success-color);
+    font-size: 0.9em;
+    margin-left: 8px; /* Space from filename */
+    font-weight: normal; /* Override potential bold from button */
+}
+/* Add indicator style within h2 as well */
+.diff-content-item h2 .new-file-indicator {
+     color: var(--success-color);
+     font-size: 0.8em;
+     font-weight: normal;
+     background-color: rgba(46, 160, 67, 0.1);
+     padding: 0.1em 0.4em;
+     border-radius: 3px;
+     margin-left: 10px;
+}
+
+/* ... (rest of existing styles.css) ... */
+
+/* Ensure nl2br content wraps correctly if used outside pre tags*/
+.nl2br-content {
+    white-space: pre-wrap; /* Ensure line breaks are respected and text wraps */
+    word-wrap: break-word;
+}

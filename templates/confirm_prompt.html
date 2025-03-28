@@ -7,41 +7,81 @@
     <title>Confirm Modification Prompt</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        #loading-indicator { display: none; /* ... other styles */ }
-        /* ... diff styles ... */
+        #loading-indicator {
+            display: none; /* Hidden by default */
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background-color: var(--warning-color);
+            color: var(--text-light);
+            border-radius: var(--border-radius);
+            text-align: center;
+        }
+        /* Styles for the scrollable prompt container */
+        .prompt-container {
+            max-height: 60vh; /* Limit height */
+            overflow-y: auto; /* Enable vertical scroll */
+            border: 1px solid var(--border-color);
+            padding: var(--spacing-unit);
+            background-color: var(--medium-bg);
+            border-radius: var(--border-radius);
+            margin-top: var(--spacing-unit); /* Space below buttons */
+        }
+        .prompt-container pre {
+             margin: 0; /* Remove default margin from pre */
+             background: none; /* Inherit background */
+             border: none; /* Remove border from pre */
+             padding: 0; /* Remove padding from pre */
+        }
+        .action-buttons {
+             margin-bottom: var(--spacing-unit); /* Space above prompt */
+             padding-bottom: var(--spacing-unit);
+             border-bottom: 1px solid var(--border-color);
+        }
     </style>
 </head>
 <body>
     <div class="container-fluid">
         <h1>Confirm Modification Prompt</h1>
-        <p>Review the prompt that will be sent to the LLM...</p>
-        <pre>{{ prompt }}</pre> <!-- This is prompt_display -->
+        <p>Review the prompt that will be sent to the LLM. Press 'Generate Modifications' to proceed or 'Cancel'.</p>
 
-        <!-- Form points to generate_modifications -->
-        <form id="generate-form" action="{{ url_for('generate_modifications', query_id=query_id) }}" method="POST" style="display: inline-block;">
-            <button id="generate-button" type="submit" class="btn btn-primary">Generate Modifications</button>
-        </form>
+        <!-- Action Buttons moved ABOVE the prompt container -->
+        <div class="action-buttons">
+            <form id="generate-form" action="{{ url_for('generate_modifications', query_id=query_id) }}" method="POST" style="display: inline-block;">
+                <button id="generate-button" type="submit" class="btn btn-primary">Generate Modifications</button>
+            </form>
 
-        <!-- Cancel Form/Button -->
-        <form action="{{ url_for('cancel_modification', query_id=query_id) }}" method="POST" style="display: inline-block; margin-left: 10px;">
-             <button type="submit" class="btn btn-secondary">Cancel</button>
-        </form>
-        <!-- Or use a simple link if GET is okay for cancel -->
-        <!-- <a href="{{ url_for('cancel_modification', query_id=query_id) }}" class="btn btn-secondary mt-3">Cancel</a> -->
+            <!-- Cancel Form/Button -->
+            <form action="{{ url_for('cancel_modification', query_id=query_id) }}" method="POST" style="display: inline-block; margin-left: 10px;">
+                 <button type="submit" class="btn btn-secondary">Cancel</button>
+            </form>
+            <!-- Or use a simple link if GET is okay for cancel -->
+            <!-- <a href="{{ url_for('cancel_modification', query_id=query_id) }}" class="btn btn-secondary">Cancel</a> -->
+        </div>
 
+        <!-- Scrollable Prompt Container -->
+        <div class="prompt-container">
+            <pre>{{ prompt }}</pre> <!-- This is prompt_display -->
+        </div>
 
-        <div id="loading-indicator">Generating modifications... Please wait.</div>
+        <div id="loading-indicator">Generating modifications... This may take a moment. Please wait.</div>
     </div>
     <script>
-        // ... (JavaScript for loading indicator remains the same) ...
         const form = document.getElementById('generate-form');
         const button = document.getElementById('generate-button');
         const loadingIndicator = document.getElementById('loading-indicator');
-        form.addEventListener('submit', function() {
-            loadingIndicator.style.display = 'block';
-            button.disabled = true;
-            button.innerText = 'Generating...';
-        });
+
+        if (form && button && loadingIndicator) {
+            form.addEventListener('submit', function() {
+                loadingIndicator.style.display = 'block';
+                button.disabled = true;
+                button.innerText = 'Generating...';
+                // Disable cancel button too? Optional.
+                const cancelButton = form.nextElementSibling?.querySelector('button'); // Find cancel button in next form
+                if (cancelButton) {
+                    cancelButton.disabled = true;
+                }
+            });
+        }
     </script>
 </body>
 </html>

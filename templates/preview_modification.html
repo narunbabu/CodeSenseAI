@@ -7,44 +7,204 @@
     <title>Preview Modifications</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <!-- Optional: Add syntax highlighting CSS for diff -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css"> <!-- Using github-dark for better contrast -->
     <style>
-        /* Simple Diff Highlighting */
-        .diff-added { background-color: #e6ffed; color: #22863a; }
-        .diff-removed { background-color: #ffeef0; color: #b31d28; }
-        .diff-changed-marker { background-color: #fffab8; } /* Optional for '? ' lines */
+        /* Simple Diff Highlighting (Keep or enhance) */
+        .diff-added { background-color: rgba(46, 160, 67, 0.2); color: #2da043; } /* Lighter green bg */
+        .diff-removed { background-color: rgba(248, 81, 73, 0.1); color: #f85149; } /* Lighter red bg */
+        .diff-changed-marker { background-color: #fffab8; }
         pre code.diff { white-space: pre; } /* Ensure whitespace is preserved */
+
+        /* Layout specific styles */
+        .preview-layout {
+            display: flex;
+            height: calc(100vh - 80px); /* Adjust based on header/footer height if any */
+            margin-top: 1rem;
+        }
+        .preview-sidebar {
+            width: 300px; /* Fixed width sidebar */
+            flex-shrink: 0;
+            background-color: var(--secondary-color);
+            color: var(--text-light);
+            padding: var(--spacing-unit);
+            overflow-y: auto;
+            border-right: 1px solid var(--border-color);
+        }
+        .preview-content {
+            flex-grow: 1;
+            padding: var(--spacing-unit);
+            overflow-y: auto; /* Makes the content area scrollable */
+            background-color: #fff;
+        }
+        .preview-sidebar h3 {
+            color: var(--text-light);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .preview-sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .preview-sidebar li button {
+            background: none;
+            border: none;
+            color: var(--light-bg);
+            padding: 0.5rem 0.75rem;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            border-radius: var(--border-radius);
+            font-size: 0.9em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 0.25rem;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .preview-sidebar li button:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-light);
+        }
+        .preview-sidebar li button.active {
+            background-color: var(--primary-color);
+            color: var(--text-light);
+            font-weight: bold;
+        }
+        .diff-content-item {
+            display: none; /* Hide all by default */
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            margin-bottom: var(--spacing-unit); /* Space between items if shown differently */
+            background-color: var(--medium-bg); /* Background for the diff container */
+        }
+        .diff-content-item.active {
+            display: block; /* Show the active one */
+        }
+        .diff-content-item h2 { /* File path */
+            font-family: var(--font-family-monospace);
+            background-color: var(--light-bg);
+            padding: 0.75rem;
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            font-size: 1.1em;
+            margin: 0;
+            border-bottom: 1px solid var(--border-color);
+            word-wrap: break-word;
+        }
+        .diff-content-item pre {
+            margin: 0;
+            border: none; /* Remove border from pre, container has it */
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            padding: var(--spacing-unit);
+             background-color: #2d2d2d; /* Darker background for code */
+             color: #f0f0f0; /* Light text for code */
+        }
+        .preview-actions {
+            margin-top: var(--spacing-unit);
+            padding-top: var(--spacing-unit);
+            border-top: 1px solid var(--border-color);
+            background-color: #fff; /* Match content bg */
+            padding: var(--spacing-unit);
+            text-align: right;
+        }
+        .new-file-indicator {
+            font-style: italic;
+            color: var(--success-color);
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
-    <div class="container-fluid"> <!-- Simple container -->
+    <div class="container-fluid"> <!-- Using container-fluid for structure -->
         <h1>Preview Modifications</h1>
-        {% for mod in modifications %}
-            <div class="diff-view"> <!-- Container for each file diff -->
-                <h2>{{ mod.file_path }}</h2>
-                <h3>Diff:</h3>
-                <!-- Use the pre-generated highlighted_diff -->
-                <pre><code class="diff">{{ mod.highlighted_diff|safe }}</code></pre>
-            </div>
-            <hr>
-        {% endfor %}
+        <p>Review the proposed changes. Click a file on the left to view its diff.</p>
 
-        <form action="{{ url_for('accept_modifications', query_id=query_id) }}" method="POST">
-            <!--
-                IMPORTANT FIX:
-                modifications_json is ALREADY a JSON string from the backend.
-                Using |tojson would double-escape it.
-                Use |safe to prevent HTML escaping of quotes inside the JSON string.
-            -->
-            <input type="hidden" name="modifications_json" value='{{ modifications_json | safe }}'>
-            <button type="submit" class="btn btn-success">Accept Modifications</button>
+        <div class="preview-layout">
+            <div class="preview-sidebar">
+                <h3>Files to Modify/Create</h3>
+                <ul id="file-nav-list">
+                    {% for mod in modifications %}
+                    <li>
+                        <button class="file-nav-button" data-target="diff-{{ loop.index0 }}">
+                            {{ mod.file_path }}
+                            {# Heuristic: If diff only contains additions, mark as new #}
+                            {# A more robust way is to add a flag from the backend #}
+                            {% set is_new = mod.highlighted_diff.find('diff-removed') == -1 and mod.highlighted_diff.find('diff-added') != -1 %}
+                            {% if is_new %}<span class="new-file-indicator">(New)</span>{% endif %}
+                        </button>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="preview-content" id="diff-content-area">
+                {% for mod in modifications %}
+                <div class="diff-content-item" id="diff-{{ loop.index0 }}">
+                    <h2>
+                        {{ mod.file_path }}
+                        {% set is_new = mod.highlighted_diff.find('diff-removed') == -1 and mod.highlighted_diff.find('diff-added') != -1 %}
+                        {% if is_new %}<span class="new-file-indicator">(New File)</span>{% endif %}
+                    </h2>
+                    <pre><code class="diff">{{ mod.highlighted_diff|safe }}</code></pre>
+                </div>
+                {% endfor %}
+                
+                {% if not modifications %}
+                    <p>No modifications were generated.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="preview-actions">
+            <form action="{{ url_for('accept_modifications', query_id=query_id) }}" method="POST" style="display: inline-block;">
+
+                <button type="submit" class="btn btn-success">Accept Modifications</button>
+            </form>
             <!-- Link Cancel button to the cancel route -->
             <a href="{{ url_for('cancel_modification', query_id=query_id) }}" class="btn btn-danger">Cancel</a>
-        </form>
+
+
+        </div>
     </div>
 
-    <!-- Optional: Add highlight.js library (if needed for other code blocks, not strictly for diff) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script> 
-     <script>hljs.highlightAll();</script>
+    <!-- Optional: Add highlight.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script>
+        // Initialize syntax highlighting for diffs
+        //hljs.highlightAll(); // Might conflict with manual diff classes, use carefully or target specific blocks
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileNavButtons = document.querySelectorAll('.file-nav-button');
+            const diffContentItems = document.querySelectorAll('.diff-content-item');
+
+            function setActiveItem(index) {
+                // Remove active class from all buttons and items
+                fileNavButtons.forEach(btn => btn.classList.remove('active'));
+                diffContentItems.forEach(item => item.classList.remove('active'));
+
+                // Add active class to the selected button and item
+                if (fileNavButtons[index]) {
+                    fileNavButtons[index].classList.add('active');
+                }
+                if (diffContentItems[index]) {
+                    diffContentItems[index].classList.add('active');
+                }
+            }
+
+            // Set the first item as active by default if items exist
+            if (fileNavButtons.length > 0) {
+                setActiveItem(0);
+            }
+
+            // Add click event listeners to sidebar buttons
+            fileNavButtons.forEach((button, index) => {
+                button.addEventListener('click', function() {
+                    setActiveItem(index);
+                });
+            });
+        });
+    </script>
 </body>
 </html>
