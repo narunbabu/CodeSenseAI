@@ -144,52 +144,6 @@ Here are the files to modify:
         # Return temp_id, the prompt (for display only), and the small session data dict
         return temp_id, prompt, small_session_data
 
-    # def _parse_llm_code_modification_response(self, response_text):
-    #     """
-    #     Parses the LLM response to extract modified code blocks for each file.
-    #     Expects format:
-    #     === FILE: path/to/file.ext ===
-    #     ```language
-    #     ... code ...
-    #     ``` {data-source-line="722"}
-    #     """
-    #     # modifications = {}
-    #     modified_files = {}
-    #     # Regex to find file path and the code block immediately following it
-    #     # Handles optional language hint after ```
-    #     pattern = r'```(?:[\w.]+)?\s*([\w./\\-]+)(?:\s+//.*?|(?:\s*;.*?|\s+.*?))?(?:\n)(.*?)```'
-    #     # matches = pattern.findall(response_text)
-    #     matches = re.finditer(pattern, response_text, re.DOTALL)
-
-    #     for match in matches:
-    #         filename = match.group(1).strip()
-    #         print(filename)
-    #         code = match.group(2).strip()
-    #         modified_files[filename] = code
-    #     return modified_files
-
-    #     # if not matches:
-    #     #      # Fallback: Maybe the LLM just gave one block without headers?
-    #     #      # Try finding a single code block
-    #     #      single_block_match = re.search(r'```(?:[a-zA-Z0-9_.-]*)?\s*(.*?)\s*```', response_text, re.DOTALL)
-    #     #      if single_block_match:
-    #     #          # Problem: We don't know which file this belongs to if multiple were requested.
-    #     #          # This is ambiguous. We might return an error or make a guess if only one file was in the prompt.
-    #     #          print("Warning: Ambiguous response. Found a single code block without file headers.")
-    #     #          # For now, let's not assign it if we can't be sure.
-    #     #          # If only one file was requested, we could potentially assign it.
-    #     #          return None # Indicate parsing failure due to ambiguity or lack of structure
-
-    #     # for file_path, code in matches:
-    #     #     # Normalize path and remove potential leading/trailing whitespace
-    #     #     normalized_path = file_path.strip().replace("\\", "/")
-    #     #     modifications[normalized_path] = code.strip()
-
-    #     # if not modifications:
-    #     #      print("Error: Could not parse any code blocks in the expected format from LLM response.")
-    #     #      return None # Indicate failure
-
-    #     # return modifications
     def _parse_llm_code_modification_response(self, response_text):
         """
         Parses the LLM response to extract modified code blocks for each file.
@@ -345,9 +299,9 @@ Here are the files to modify:
              print("Error: Failed to parse modifications from LLM response.")
              # Return None preview, but include LLM details
              return {"preview": None, **llm_response_details}
-        with open(f"C:\ArunApps\code_related\code_summarizer\projects\\arun-chat\parsed_modifications_{uuid.uuid4()}.json", "w", encoding="utf-8") as f:
-            json.dump(parsed_modifications, f, indent=4)
-        print("Parsed modifications saved to parsed_modifications.json")
+        # with open(f"C:\ArunApps\code_related\code_summarizer\projects\\arun-chat\parsed_modifications_{uuid.uuid4()}.json", "w", encoding="utf-8") as f:
+        #     json.dump(parsed_modifications, f, indent=4)
+        # print("Parsed modifications saved to parsed_modifications.json")
 
 
 
@@ -393,121 +347,6 @@ Here are the files to modify:
         # Return successful preview along with LLM details
         return {"preview": preview_modifications, **llm_response_details}
     
-    # def apply_modifications(self, temp_id, small_session_data, modifications_to_apply):
-    #     """
-    #     Applies the modifications, saves history, and cleans up temp file.
-    #     Args:
-    #         temp_id (str): The temporary modification identifier.
-    #         small_session_data (dict): Data from session (incl. query_id, client_type, LLM details).
-    #         modifications_to_apply (list): List of dicts with 'file_path' and 'new_code'.
-    #     Returns:
-    #         str: The ID of the modification record, or None on failure.
-    #     """
-    #     pm = self.pm
-    #     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    #     modification_results = []
-
-    #     if not small_session_data or not temp_id:
-    #         print("Error: Invalid or missing session data/temp_id provided to apply_modifications.")
-    #         return None
-    #     query_id = small_session_data.get("query_id")
-    #     client_type = small_session_data.get("modification_client_type") # For history record
-    #     llm_response = small_session_data.get("llm_response", "") # Get LLM details saved by caller
-    #     llm_response_time = small_session_data.get("llm_response_time", 0)
-
-    #     if not query_id or not client_type:
-    #         print("Error: Missing query_id or client_type in session data during apply_modifications.")
-    #         return None
-
-    #     if not isinstance(modifications_to_apply, list):
-    #          print("Error: apply_modifications received invalid modifications data format.")
-    #          return None
-
-    #     applied_files_count = 0
-    #     project_base_path = Path(self.pm.project_path).resolve() # Use resolved Path
-
-    #     for mod_info in modifications_to_apply:
-    #         # ... (File path normalization, security check, backup, and write logic remains the same) ...
-    #         if not isinstance(mod_info, dict) or "file_path" not in mod_info or "new_code" not in mod_info:
-    #              print(f"Warning: Skipping invalid modification item: {mod_info}")
-    #              continue
-
-    #         file_path_str = mod_info["file_path"].replace("\\", "/") # Normalize path from input JSON
-    #         new_code = mod_info["new_code"]
-
-    #         # Construct full path safely
-    #         try:
-    #             full_path = (project_base_path / file_path_str).resolve()
-    #             # Security check
-    #             if not full_path.is_relative_to(project_base_path):
-    #                  print(f"Error: Attempted write outside project directory: {file_path_str}. Skipping.")
-    #                  modification_results.append({
-    #                      "file_path": file_path_str, "status": "error",
-    #                      "message": "Write outside project directory denied"
-    #                  })
-    #                  continue
-    #         except Exception as e:
-    #              print(f"Error resolving path '{file_path_str}' for writing: {e}. Skipping.")
-    #              modification_results.append({
-    #                  "file_path": file_path_str, "status": "error",
-    #                  "message": f"Path resolution error: {e}"
-    #              })
-    #              continue
-
-    #         # Backup original file before writing
-    #         pm.backups_dir.mkdir(parents=True, exist_ok=True)
-    #         backup_success = backup_file(str(full_path), timestamp, backups_dir=pm.backups_dir)
-    #         if not backup_success:
-    #             print(f"Warning: Failed to create backup for {full_path}. Proceeding...")
-
-    #         # Write the new content
-    #         success = write_file_content(str(full_path), new_code)
-    #         # ... (Append to modification_results based on success/failure) ...
-    #         if success:
-    #             modification_results.append({
-    #                 "file_path": file_path_str, "status": "success",
-    #                 "message": "File modified successfully"
-    #             })
-    #             applied_files_count += 1
-    #         else:
-    #             modification_results.append({
-    #                 "file_path": file_path_str, "status": "error",
-    #                 "message": "Failed to write modified content"
-    #             })
-
-
-    #     if applied_files_count == 0 and modifications_to_apply:
-    #          print("Error: Failed to apply modifications to any file.")
-    #          # Do NOT delete temp file yet, might be needed for retry/debug
-    #          return None # Indicate complete failure
-
-    #     # Load history and add entry
-    #     history = pm.load_modifications_history()
-    #     modification_entry = {
-    #         "id": str(uuid.uuid4()),
-    #         "query_id": query_id,
-    #         "timestamp": timestamp,
-    #         "files_modified": modification_results,
-    #         # Include LLM details from session data
-    #         "llm_response": llm_response,
-    #         "response_time": llm_response_time,
-    #         "modification_client_type": client_type
-    #     }
-    #     history.append(modification_entry)
-    #     pm.save_modifications_history(history)
-
-    #     # --- Clean up the temporary file ---
-    #     temp_filepath = self._get_temp_filepath(temp_id)
-    #     try:
-    #         temp_filepath.unlink(missing_ok=True) # Delete the file, ignore if already gone
-    #         print(f"Cleaned up temporary modification file: {temp_filepath}")
-    #     except Exception as e:
-    #         print(f"Warning: Failed to clean up temporary file {temp_filepath}: {e}")
-
-    #     # Session cleanup happens in the Flask route
-
-    #     return modification_entry["id"] # Return ID of the successful modification record
-    # --- Inside apply_modifications in modification_handler.py ---
 
     def apply_modifications(self, temp_id, small_session_data, modifications_to_apply):
         pm = self.pm

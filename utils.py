@@ -20,17 +20,7 @@ def serialize_data(obj):
         return [serialize_data(item) for item in obj]
     else:
         return obj
-# def extract_json(text):
-#     try:
-#         return json.loads(text)
-#     except Exception:
-#         matches = re.findall(r'\{.*\}', text, re.DOTALL)
-#         for match in matches:
-#             try:
-#                 return json.loads(match)
-#             except:
-#                 continue
-#         return {}
+
 
 def load_json(path):
     try:
