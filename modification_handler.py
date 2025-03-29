@@ -21,11 +21,6 @@ class ModificationHandler:
         return self.temp_dir / f"{temp_id}.json"
 
     def prepare_modification_prompt(self, query_id, client_type):
-        """
-        Prepares modification prompt, saves large data to a temp file.
-        Returns:
-            tuple: (temp_id, prompt_for_display, small_session_data) or (None, None, None)
-        """
         history = self.pm.load_query_history()
         query_entry = next((item for item in history if item.get("id") == query_id), None)
 
@@ -33,10 +28,12 @@ class ModificationHandler:
             print(f"Error: Query ID {query_id} not found.")
             return None, None, None
 
-        # ... (rest of the logic to validate query_entry and files_to_modify_data remains the same) ...
         files_to_modify_data = query_entry.get("response", [])
         if not isinstance(files_to_modify_data, list) or not files_to_modify_data:
             print(f"Error: No valid files/instructions found in query response for {query_id}.")
+            # Check if it was just an error placeholder
+            if isinstance(files_to_modify_data, list) and files_to_modify_data and "error" in files_to_modify_data[0]:
+                 print(f"Reason: {files_to_modify_data[0]['error']}")
             return None, None, None
 
         valid_files_data = [
@@ -45,7 +42,11 @@ class ModificationHandler:
         ]
         if not valid_files_data:
             print(f"Error: No files with modification instructions found for query {query_id}.")
+            # Check if it was just an info placeholder
+            if isinstance(files_to_modify_data, list) and files_to_modify_data and "info" in files_to_modify_data[0]:
+                 print(f"Reason: {files_to_modify_data[0]['info']}")
             return None, None, None
+
 
 
         prompt = f"""
@@ -86,45 +87,48 @@ Here are the files to modify:
 
         for file_info in valid_files_data:
             file_path_str = file_info.get("file_path", "").replace("\\", "/")
-            # Construct full path safely using Path objects
+            if not file_path_str:
+                print("Warning: Skipping item with empty file path.")
+                continue
+
             try:
-                 # Resolve potentially relative paths from the query against the project base
-                 full_path = (project_base_path / file_path_str).resolve()
-                 # Security check: Ensure the path stays within the project directory
-                 if not full_path.is_relative_to(project_base_path):
-                      print(f"Warning: Skipping potentially unsafe path outside project: {file_path_str}")
-                      continue
-            except Exception as e: # Catch potential errors during path resolution
-                 print(f"Warning: Error processing path '{file_path_str}': {e}. Skipping.")
-                 continue
-
-
-            content = read_file_content(str(full_path)) # read_file_content expects string path
-            if content is not None:
-                instructions = file_info.get('instructions_to_modify', '').strip()
-                # Use relative path in prompt for clarity
+                full_path = (project_base_path / file_path_str).resolve()
+                if not full_path.is_relative_to(project_base_path):
+                    print(f"Warning: Skipping potentially unsafe path outside project: {file_path_str}")
+                    continue
                 relative_path_for_prompt = str(full_path.relative_to(project_base_path)).replace("\\", "/")
-                prompt += f"\n=== FILE: {relative_path_for_prompt} ===\nINSTRUCTIONS: {instructions}\nCURRENT CODE:\n```{content}\n```\n"
-                # Store content keyed by the normalized relative path used in prompt
-                file_contents[relative_path_for_prompt] = content
-                files_processed_count += 1
-            else:
-                 print(f"Warning: Could not read content for file: {full_path}")
+            except Exception as e:
+                print(f"Warning: Error processing path '{file_path_str}': {e}. Skipping.")
+                continue
 
+            # Try reading content. If it fails or file doesn't exist, content will be None.
+            content = read_file_content(str(full_path))
+            instructions = file_info.get('instructions_to_modify', '').strip()
+
+            # Add file section to prompt regardless of whether content exists
+            prompt += f"\n=== FILE: {relative_path_for_prompt} ===\nINSTRUCTIONS: {instructions}\n"
+            if content is not None:
+                prompt += f"CURRENT CODE:\n```{content}\n```\n"
+                # Store actual content for diff later
+                file_contents[relative_path_for_prompt] = content
+            else:
+                # Indicate it's a new file or couldn't be read
+                prompt += f"CURRENT CODE: (New File or Read Error)\n```\n```\n" # Empty code block
+                # Store empty string for diff later (treat as new)
+                file_contents[relative_path_for_prompt] = ""
+                print(f"Note: File '{relative_path_for_prompt}' not found or unreadable. Will treat as new file generation.")
+
+            files_processed_count += 1
 
         if files_processed_count == 0:
-             print(f"Error: Could not read content for any requested files for query {query_id}.")
-             return None, None, None
+            print(f"Error: Could not prepare any files for modification/generation for query {query_id}.")
+            return None, None, None
 
         temp_id = str(uuid.uuid4())
-
-        # Data to be saved to the temporary file (large parts)
         large_data_to_save = {
             "modification_prompt": prompt,
-            "original_file_contents": file_contents
+            "original_file_contents": file_contents # Will contain "" for new files
         }
-
-        # Save the large data to the temp file
         temp_filepath = self._get_temp_filepath(temp_id)
         try:
             save_json(large_data_to_save, temp_filepath)
@@ -133,17 +137,50 @@ Here are the files to modify:
             print(f"Error saving temporary modification data to {temp_filepath}: {e}")
             return None, None, None
 
-        # Small data to be stored in the session
         small_session_data = {
             "query_id": query_id,
             "modification_client_type": client_type,
-            # Store list of file paths involved for potential future use/validation
             "involved_files": list(file_contents.keys())
         }
 
-        # Return temp_id, the prompt (for display only), and the small session data dict
         return temp_id, prompt, small_session_data
 
+    # def _parse_llm_code_modification_response(self, response_text):
+    #     """
+    #     Parses the LLM response to extract modified code blocks for each file.
+    #     Expected primary format:
+    #     ```<language> <file_path>
+    #     <code>
+    #     ```
+        
+    #     If not found, an alternative pattern is tried:
+    #     === FILE: <file_path> ===
+    #     ```<language>
+    #     <code>
+    #     ```
+    #     """
+    #     modified_files = {}
+    #     # Primary regex pattern:
+    #     # Matches triple backticks, an optional language, then whitespace, then file path,
+    #     # then newline, then the code (non-greedily), then closing triple backticks.
+    #     pattern = r'```(?:\S+)?\s+([^\n]+?)\s*\n(.*?)```'
+    #     matches = re.finditer(pattern, response_text, re.DOTALL)
+    #     for match in matches:
+    #         file_path = match.group(1).strip()
+    #         code = match.group(2).strip()
+    #         modified_files[file_path] = code
+
+    #     # If nothing was parsed, try an alternative pattern with a file header
+    #     if not modified_files:
+    #         print("No modifications found using the primary format. Attempting alternative parsing...")
+    #         alt_pattern = r'===\s*FILE:\s*([^\n]+?)\s*===\s*```(?:\S+)?\s*\n(.*?)```'
+    #         alt_matches = re.finditer(alt_pattern, response_text, re.DOTALL)
+    #         for match in alt_matches:
+    #             file_path = match.group(1).strip()
+    #             code = match.group(2).strip()
+    #             modified_files[file_path] = code
+
+    #     return modified_files
     def _parse_llm_code_modification_response(self, response_text):
         """
         Parses the LLM response to extract modified code blocks for each file.
@@ -151,35 +188,33 @@ Here are the files to modify:
         ```<language> <file_path>
         <code>
         ```
-        
-        If not found, an alternative pattern is tried:
-        === FILE: <file_path> ===
-        ```<language>
-        <code>
-        ```
         """
-        modified_files = {}
+        modifications_list = []
         # Primary regex pattern:
-        # Matches triple backticks, an optional language, then whitespace, then file path,
-        # then newline, then the code (non-greedily), then closing triple backticks.
         pattern = r'```(?:\S+)?\s+([^\n]+?)\s*\n(.*?)```'
         matches = re.finditer(pattern, response_text, re.DOTALL)
         for match in matches:
             file_path = match.group(1).strip()
             code = match.group(2).strip()
-            modified_files[file_path] = code
+            modifications_list.append({
+                "file_path": file_path,
+                "new_code": code
+            })
 
-        # If nothing was parsed, try an alternative pattern with a file header
-        if not modified_files:
+        # If nothing was parsed, try an alternative pattern
+        if not modifications_list:
             print("No modifications found using the primary format. Attempting alternative parsing...")
             alt_pattern = r'===\s*FILE:\s*([^\n]+?)\s*===\s*```(?:\S+)?\s*\n(.*?)```'
             alt_matches = re.finditer(alt_pattern, response_text, re.DOTALL)
             for match in alt_matches:
                 file_path = match.group(1).strip()
                 code = match.group(2).strip()
-                modified_files[file_path] = code
+                modifications_list.append({
+                    "file_path": file_path,
+                    "new_code": code
+                })
 
-        return modified_files
+        return modifications_list
     def process_modifications(self, temp_id, small_session_data):
         """
         Processes modifications, response generation from LLM using (prompt) data read from temp file and session.
@@ -282,39 +317,28 @@ Here are the files to modify:
 
         # Parse the actual LLM response
         parsed_modifications = self._parse_llm_code_modification_response(llm_response_raw)
-        # temp_store_file_path_parsed = self.pm.output_dir / "parsed_modifications.json" # Use different variable name
-        # # Dump the JSON file
-        # try: # Added try-except for robustness during file write
-        #     # Ensure parsed_modifications is serializable (it should be a dict)
-        #     serializable_parsed_modifications = parsed_modifications if isinstance(parsed_modifications, dict) else {}
-        #     with open(temp_store_file_path_parsed, "w", encoding="utf-8") as file:
-        #         # Dump the PARSED modifications, not the llm_response_details again
-        #         json.dump(serializable_parsed_modifications, file, indent=4) # Added indent
-        #     # print the response has been saved at path
-        #     print(f"Saved parsed modifications to {temp_store_file_path_parsed}")
-        # except Exception as e:
-        #     print(f"Error saving parsed modifications to {temp_store_file_path_parsed}: {e}")
-        
         if parsed_modifications is None:
-             print("Error: Failed to parse modifications from LLM response.")
-             # Return None preview, but include LLM details
-             return {"preview": None, **llm_response_details}
-        # with open(f"C:\ArunApps\code_related\code_summarizer\projects\\arun-chat\parsed_modifications_{uuid.uuid4()}.json", "w", encoding="utf-8") as f:
-        #     json.dump(parsed_modifications, f, indent=4)
-        # print("Parsed modifications saved to parsed_modifications.json")
+            print("Error: Failed to parse modifications from LLM response.")
+            return {"preview": None, **llm_response_details}
 
-
+        # Convert the list of modifications into a dictionary keyed by file path.
+        modifications_dict = {}
+        for mod in parsed_modifications:
+            file_path = mod.get("file_path")
+            new_code = mod.get("new_code")
+            if file_path:
+                modifications_dict[file_path] = new_code
 
         # --- Generate preview with diffs for both existing and new files ---
         preview_modifications = []
         # Create a union of all file paths from the original files and the parsed modifications
-        all_file_paths = set(original_contents.keys()) | set(parsed_modifications.keys())
+        all_file_paths = set(original_contents.keys()) | set(modifications_dict.keys())
 
         for file_path in all_file_paths:
             normalized_file_path = file_path.replace("\\", "/")
             # For existing files, get old code; for new files, old code is empty
             old_code = original_contents.get(normalized_file_path, "")
-            new_code = parsed_modifications.get(normalized_file_path)
+            new_code = modifications_dict.get(normalized_file_path)
             if new_code is None:
                 print(f"Warning: LLM did not provide modified code for file: {normalized_file_path}")
                 continue
@@ -381,6 +405,16 @@ Here are the files to modify:
             file_path_str = mod_info["file_path"].replace("\\", "/")
             new_code = mod_info["new_code"]
 
+            # Log a warning if new code is empty
+            if not new_code.strip():
+                print(f"Warning: New code for file '{file_path_str}' is empty. Skipping file.")
+                modification_results.append({
+                    "file_path": file_path_str,
+                    "status": "warning",
+                    "message": "No new code provided"
+                })
+                continue
+
             try:
                 full_path = (project_base_path / file_path_str).resolve()
                 if not full_path.is_relative_to(project_base_path):
@@ -400,6 +434,10 @@ Here are the files to modify:
                 })
                 continue
 
+            # Log the full path and new code length
+            print(f"Applying modification for file: {full_path}")
+            print(f"New code length for '{file_path_str}': {len(new_code)}")
+
             # If the file exists, create a backup; if not, create parent directories for new file
             if full_path.exists():
                 pm.backups_dir.mkdir(parents=True, exist_ok=True)
@@ -407,12 +445,11 @@ Here are the files to modify:
                 if not backup_success:
                     print(f"Warning: Failed to create backup for {full_path}. Proceeding...")
             else:
-                # Create necessary parent directories for the new file
                 full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Write the new content (overwriting if file exists or creating new file)
             success = write_file_content(str(full_path), new_code)
             if success:
+                print(f"Successfully wrote modifications to {full_path}")
                 modification_results.append({
                     "file_path": file_path_str,
                     "status": "success",
@@ -420,6 +457,7 @@ Here are the files to modify:
                 })
                 applied_files_count += 1
             else:
+                print(f"Error: Failed to write modifications to {full_path}")
                 modification_results.append({
                     "file_path": file_path_str,
                     "status": "error",

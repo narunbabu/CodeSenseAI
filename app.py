@@ -3,9 +3,6 @@
 # Summary:
 # - Added a new route `/create_project` to handle the creation of new, empty projects.
 # - Modified the `home` route and template (`home.html`) to include a tab for creating new projects with inputs for name and source path.
-# - Updated `ProjectManager` to initialize necessary files (like empty summaries) for new projects.
-# - Adjusted `project_dashboard` and `query` routes to allow processing queries for new/empty projects (those without existing summaries).
-# - Modified `QueryHandler` to use a specific prompt for new projects, instructing the LLM to generate new files.
 
 import os
 import json
@@ -80,8 +77,7 @@ def nl2br(value):
     """Convert newlines to <br> tags for HTML output."""
     return value.replace('\n', '<br>')
 
-# --- Routes (home, select_project, build_file_tree, list_files, project_files, update_file_selection) ---
-# ... (Keep existing routes, assuming they are correct) ...
+
 @app.route("/", methods=["GET"])
 def home():
     init_session()
@@ -133,7 +129,7 @@ def create_project():
         flash("Project name and source code path are required.", "error")
         return redirect(url_for("home"))
 
-    source_code_path = Path(source_code_path_str)
+    source_code_path = Path(source_code_path_str) / project_name
     local_storage_path = Path(DEFAULT_LOCAL_STORAGE) / project_name
 
     # Basic validation
@@ -478,8 +474,6 @@ def update_file_selection():
     return redirect(url_for("project_dashboard"))
 
 
-# --- Routes (project_dashboard, refresh_project, combined_summary, summarize_project) ---
-# ... (Keep existing routes, assuming they are correct) ...
 @app.route("/project_dashboard", methods=["GET", "POST"])
 def project_dashboard():
     init_session()
@@ -494,65 +488,137 @@ def project_dashboard():
         pm = ProjectManager(source_code_path, local_storage_path)
     except Exception as e:
         flash(f"Error initializing project: {e}", "error")
-        # Clear broken session data?
         session.pop('current_source_project', None)
         return redirect(url_for("home"))
 
     if request.method == "POST":
         # --- Handle Query Submission from Dashboard ---
-        input_query = request.form.get("input_query", "")
-        client_type = request.form.get("client_type", "openai") # Default to openai if not specified
+        input_query = request.form.get("input_query", "").strip()
+        client_type = request.form.get("client_type", "openai")
 
         if not input_query:
             flash("Query cannot be empty.", "warning")
             return redirect(url_for("project_dashboard"))
 
-        # MODIFICATION: Allow queries even if no summary exists (for new projects)
-        # if not pm.has_summary():
-        #     flash("Please summarize the source code first before querying.", "error")
-        #     return redirect(url_for("project_dashboard"))
-
-        # Ensure selected client exists
         if client_type not in clients_mapping:
-             flash(f"Invalid client type '{client_type}' selected. Using default.", "warning")
-             client_type = "openai" # Or your preferred default
+             flash(f"Invalid client type '{client_type}'. Using default.", "warning")
+             client_type = "openai"
 
         qh = QueryHandler(pm, clients_mapping)
+        # mod_handler = ModificationHandler(pm, clients_mapping) # Instantiate ModificationHandler
+
         try:
-            query_id = qh.process_query(input_query, client_type)
-            if query_id:
+            # process_query now returns (query_id, trigger_code_generation)
+            query_id, trigger_code_generation = qh.process_query(input_query, client_type)
+
+            if query_id and trigger_code_generation:
+                # New project structure defined, redirect to /modify route
+                # which will handle prompt preparation and confirmation display
+                flash("New project structure defined. Prepare code generation...", "info")
+                print(f"Redirecting to modify route for new project query_id: {query_id}")
+                # Pass client_type as query parameter for the GET request to /modify
+                return redirect(url_for('modify_files', query_id=query_id, client_type=client_type))
+            
+
+            elif query_id:
+                # Standard query processed, redirect to detail page
                 flash("Query processed. Review the details below.", "info")
-                # Redirect to the detail page for the new query
                 return redirect(url_for("query_detail", query_id=query_id))
             else:
-                # More specific error? Check qh.process_query potential return values/exceptions
-                flash("Failed to process query (QueryHandler returned None or empty ID). Check logs.", "error")
+                # Query processing failed entirely
+                flash("Failed to process query (QueryHandler returned None ID). Check logs.", "error")
                 return redirect(url_for("project_dashboard"))
+
         except Exception as e:
             flash(f"An error occurred while processing the query: {str(e)}", "error")
-            print(f"Error processing query: {e}") # Log the full error
-            # Consider logging traceback: import traceback; traceback.print_exc()
+            print(f"Error processing query/triggering generation: {e}")
+            import traceback
+            traceback.print_exc() # Print full traceback for debugging
             return redirect(url_for("project_dashboard"))
         # --- End Query Submission Handling ---
 
-    # --- Handle GET Request (Original Dashboard Logic) ---
-    # get_summary_status() also updates hashes and project record status
+    # --- Handle GET Request (remains the same) ---
     summary_status = pm.get_summary_status()
-    # Load query history (now only contains modification queries)
     query_history = pm.load_query_history()
-    # Load summary data for display (including the project summary)
-    # Handle case where summary file might not exist or be empty initially
     summary_data = {}
     if pm.combined_json_path.exists():
         summary_data = load_json(str(pm.combined_json_path)) or {}
 
-
     return render_template("project_dashboard.html",
                            source_project=current_source_project,
                            summary_status=summary_status,
-                           query_history=query_history, # Pass the filtered history
-                           summary=summary_data, # Pass the full summary data
-                           available_clients=list(clients_mapping.keys())) # Pass client names
+                           query_history=query_history,
+                           summary=summary_data,
+                           available_clients=list(clients_mapping.keys()))
+
+        # --- End Query Submission Handling ---
+
+
+@app.route("/modify/<query_id>", methods=["GET", "POST"])
+def modify_files(query_id):
+    init_session()
+    current_source_project = session.get('current_source_project')
+    if not current_source_project:
+        flash("No source project selected", "error")
+        return redirect(url_for("home"))
+
+    pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
+
+    # Determine client_type based on method
+    if request.method == "POST":
+        # Submitted from query_detail page
+        client_type = request.form.get("client_type", "openai")
+    elif request.method == "GET":
+        # Redirected from project_dashboard for new project generation
+        client_type = request.args.get("client_type", "openai")
+    else:
+        # Should not happen, default or error
+        client_type = "openai"
+
+    if client_type not in clients_mapping:
+        flash(f"Invalid client type '{client_type}'. Using default.", "warning")
+        client_type = "openai"
+
+    mod_handler = ModificationHandler(pm, clients_mapping)
+
+    try:
+        # Prepare the modification/generation prompt
+        temp_id, prompt_display, small_data = mod_handler.prepare_modification_prompt(query_id, client_type)
+
+        if not temp_id or not small_data:
+            flash("Failed to prepare modification prompt. Check query response and logs.", "error")
+            # Redirect back to query detail if possible, else dashboard
+            # We might not have come *from* query_detail if it's a new project generation
+            # Let's redirect to dashboard as a safe fallback
+            return redirect(url_for("project_dashboard"))
+            # Could try redirecting to query_detail, but it might fail if query_id isn't suitable
+            # return redirect(url_for("query_detail", query_id=query_id))
+
+        # Store the SMALL data dictionary in the session, keyed by temp_id for potential future use (though usually not needed directly)
+        # session[temp_id] = small_data # Optional: Store if needed elsewhere, otherwise just current_temp_id is enough
+        # Store the *current* temp_id under a known key for the next step (/process_modifications)
+        session['current_temp_id'] = temp_id
+        # Store the small_data itself under a known key, as process_modifications needs it
+        session['modification_data'] = small_data
+        session.modified = True # Mark session as modified
+
+        print(f"Prepared prompt for temp_id: {temp_id}. Stored in session.")
+        # print(f"Session modification_data set: {session['modification_data']}") # Debug print
+
+        # Pass necessary data to the confirmation template
+        return render_template("confirm_prompt.html",
+                               source_project=current_source_project,
+                               query_id=query_id,
+                               prompt=prompt_display,
+                               temp_id=temp_id, # Pass temp_id to template
+                               client_type=client_type) # Pass client_type if needed in template
+        #upto this working fine. Then it move to generate_modifications
+    except Exception as e:
+        flash(f"Error preparing modification: {str(e)}", "error")
+        print(f"Error in /modify/{query_id} ({request.method}): {e}")
+        import traceback; traceback.print_exc() # For debugging
+        # Redirect back to query detail or dashboard
+        return redirect(url_for("project_dashboard"))
 
 @app.route("/refresh_project", methods=["POST"])
 def refresh_project():
@@ -854,115 +920,62 @@ def delete_query(query_id):
         return redirect(url_for("project_dashboard")) # Stay on dashboard
 
 
-# --- Modification Routes ---
-
-@app.route("/modify/<query_id>", methods=["POST"])
-def modify_files(query_id):
-    init_session()
-    current_source_project = session.get('current_source_project')
-    if not current_source_project:
-        flash("No source project selected", "error")
-        return redirect(url_for("home"))
-
-    pm = ProjectManager(current_source_project['source_code_path'], current_source_project['local_storage_path'])
-    client_type = request.form.get("client_type", "openai") # Get selected client
-
-    if client_type not in clients_mapping:
-        flash(f"Invalid client type '{client_type}' selected. Using default.", "warning")
-        client_type = "openai"
-
-    mod_handler = ModificationHandler(pm, clients_mapping)
-
-    # prepare_modification_prompt now returns (temp_id, prompt_for_display, small_session_data)
-    # result = mod_handler.prepare_modification_prompt(query_id, client_type)
-# ----
-    # prepare_modification_prompt now returns (temp_id, prompt_for_display, small_session_data)
-    try:
-        temp_id, prompt_display, small_data = mod_handler.prepare_modification_prompt(query_id, client_type)
-
-        if not temp_id or not small_data:
-            flash("Failed to prepare modification prompt. Check logs and query response.", "error")
-            return redirect(url_for("query_detail", query_id=query_id))
-
-        # Store the SMALL data dictionary in the session, keyed by temp_id
-        session[temp_id] = small_data
-        # Store the current temp_id under a known key
-        session['current_temp_id'] = temp_id
-        session.modified = True # Mark session as modified
-
-        # Pass only the prompt_display to the template
-        return render_template("confirm_prompt.html", query_id=query_id, prompt=prompt_display)
-    except Exception as e:
-        flash(f"Error preparing modification: {str(e)}", "error")
-        print(f"Error in /modify/{query_id}: {e}")
-        # import traceback; traceback.print_exc() # For debugging
-        return redirect(url_for("query_detail", query_id=query_id))
-
-
 @app.route("/generate_modifications/<query_id>", methods=["POST"])
 def generate_modifications(query_id):
     init_session()
     current_source_project = session.get('current_source_project')
     temp_id = session.get('current_temp_id')  # Get the ID of the current modification process
-
+    print("Here 1")
     if not current_source_project or not temp_id:
         flash("Session data missing or expired. Please start the modification process again.", "error")
         return redirect(url_for("query_detail", query_id=query_id))
-
-    # Retrieve the small session data stored earlier using temp_id
-    small_session_data = session.get(temp_id)
+    print("Here 2")
+    # Retrieve the small session data stored earlier using the fixed key 'modification_data'
+    small_session_data = session.get("modification_data")
     if not small_session_data:
-        flash(f"Session data missing for modification {temp_id}. Please start again.", "error")
+        flash(f"Session data missing for modification. Please start again.", "error")
         session.pop('current_temp_id', None)
         session.modified = True
         return redirect(url_for("query_detail", query_id=query_id))
-
+    print("Here 3")
     pm = ProjectManager(current_source_project['source_code_path'],
                         current_source_project['local_storage_path'])
     mod_handler = ModificationHandler(pm, clients_mapping)
-
+    print("Here 4")
     # Process modifications; this calls the LLM and generates a preview (with diffs for both old and new files)
+    result = mod_handler.process_modifications(temp_id, small_session_data)
+    if result is None or result.get("error"):
+        error_msg = result.get("error", "Failed to generate modifications. LLM call or response parsing likely failed.")
+        flash(error_msg, "error")
+        return redirect(url_for("query_detail", query_id=query_id))
+    print("Here 5")
+    preview_modifications = result.get("preview")
+    if preview_modifications is None:
+        flash("Modification generation finished, but no preview data was returned. Check logs.", "warning")
+        return redirect(url_for("query_detail", query_id=query_id))
+    print("Here 6")
+    # Update session small data with LLM details
+    small_session_data['llm_response'] = result.get('llm_response', '')
+    small_session_data['llm_response_time'] = result.get('llm_response_time', 0)
+    session["modification_data"] = small_session_data  # Save back under the same key
+    session.modified = True
+    print("Here 7")
+    # Save the preview modifications into a JSON file under the current query id.
+    proposed_modifications_dir = os.path.join(current_source_project['local_storage_path'], "proposed_modifications")
+    os.makedirs(proposed_modifications_dir, exist_ok=True)
+    proposed_modifications_file = os.path.join(proposed_modifications_dir, f"{query_id}.json")
     try:
-        result = mod_handler.process_modifications(temp_id, small_session_data)
-        if result is None or result.get("error"):
-            error_msg = result.get("error", "Failed to generate modifications. LLM call or response parsing likely failed.")
-            flash(error_msg, "error")
-            return redirect(url_for("query_detail", query_id=query_id))
-
-        preview_modifications = result.get("preview")
-        if preview_modifications is None:
-            # This case might happen if the LLM response was valid JSON but empty list `[]`
-            flash("Modification generation finished, but no modifications were proposed (LLM response might have been empty).", "warning")
-            # Redirect back to detail page, allowing user to try again or cancel.
-            return redirect(url_for("query_detail", query_id=query_id))
-
-
-        # Update session small data with LLM details
-        small_session_data['llm_response'] = result.get('llm_response', '')
-        small_session_data['llm_response_time'] = result.get('llm_response_time', 0)
-        session[temp_id] = small_session_data
-        session.modified = True
-
-        # Save the preview modifications into a JSON file under the current query id.
-        proposed_modifications_dir = pm.output_dir / "proposed_modifications"
-        proposed_modifications_dir.mkdir(exist_ok=True)
-        proposed_modifications_file = proposed_modifications_dir / f"{query_id}.json"
-
         with open(proposed_modifications_file, "w", encoding="utf-8") as f:
             json.dump(preview_modifications, f, indent=4)
         app.logger.info(f"Stored proposed modifications to {proposed_modifications_file}")
-
-
-        # Render the preview template without passing modifications_json via the form.
-        return render_template("preview_modification.html",
-                               query_id=query_id,
-                               modifications=preview_modifications)
     except Exception as e:
-        flash(f"Error generating modifications: {str(e)}", "error")
-        print(f"Error in /generate_modifications/{query_id}: {e}")
-        # import traceback; traceback.print_exc() # For debugging
-        # Clean up session? Maybe not, user might want to retry.
+        flash(f"Error saving proposed modifications file: {str(e)}", "error")
         return redirect(url_for("query_detail", query_id=query_id))
+
+    # Render the preview template without passing modifications_json via the form.
+    return render_template("preview_modification.html",
+                           query_id=query_id,
+                           modifications=preview_modifications)
 
 @app.route("/accept_modifications/<query_id>", methods=["POST"])
 def accept_modifications(query_id):
@@ -970,12 +983,13 @@ def accept_modifications(query_id):
     current_source_project = session.get('current_source_project')
     temp_id = session.get('current_temp_id')
     app.logger.info(f"Accepting modifications for query {query_id}. Temp ID: {temp_id}")
-
+    # print(f"Hare Ram 0 temp_id: {temp_id} current_source_project: {current_source_project}")
     if not current_source_project or not temp_id:
         flash("Session data missing or expired. Please start the modification process again.", "error")
         return redirect(url_for("query_detail", query_id=query_id))
-
-    small_session_data = session.get(temp_id)
+    
+    small_session_data = session.get("modification_data")
+    print(f"Hare Ram 1 small_session_data: {small_session_data}")
     if not small_session_data:
         flash(f"Session data missing for modification {temp_id}. Please start again.", "error")
         session.pop('current_temp_id', None)
@@ -987,6 +1001,7 @@ def accept_modifications(query_id):
                         current_source_project['local_storage_path'])
     proposed_modifications_dir = pm.output_dir / "proposed_modifications"
     proposed_modifications_file = proposed_modifications_dir / f"{query_id}.json"
+    
 
     if not proposed_modifications_file.exists():
         flash("Proposed modifications file not found. Please generate modifications again.", "error")
@@ -998,7 +1013,7 @@ def accept_modifications(query_id):
     except Exception as e:
         flash(f"Error reading proposed modifications file: {str(e)}", "error")
         return redirect(url_for("query_detail", query_id=query_id))
-
+    print("Hare Ram 2")
     # Validate the modifications structure
     if not isinstance(modifications_to_apply, list):
         flash("Proposed modifications data is not in the expected list format.", "error")
@@ -1100,9 +1115,6 @@ def cancel_modification(query_id):
     # Redirect back to the query detail page where the modification was initiated
     return redirect(url_for('query_detail', query_id=query_id))
 
-
-# --- Modification History Routes ---
-# ... (Keep existing routes: modifications_list, modification_detail, revert_file) ...
 @app.route("/modifications")
 def modifications_list():
     init_session()
@@ -1176,12 +1188,6 @@ def revert_file(modification_id, file_path):
     # Redirect back to the detail page of the modification being reverted
     return redirect(url_for("modification_detail", modification_id=modification_id))
 
-
-# --- Deprecated Route ---
-# @app.route("/update_summaries_for_modified", methods=["POST"])
-# def update_summaries_for_modified():
-#     flash("Functionality moved to dashboard button submitting to /summarize_project with 'only_modified=true'.", "info")
-#     return redirect(url_for('project_dashboard'))
 
 # --- Main Execution ---
 if __name__ == "__main__":

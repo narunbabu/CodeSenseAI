@@ -171,34 +171,60 @@ class ProjectManager:
         return isinstance(summary_data, dict) and bool(summary_data.get("files"))
 
     def is_project_empty(self):
-        """Checks if the source project directory contains any processable code files."""
+        """
+        Checks if the source project directory contains any processable code files.
+        If no code files exist, updates the project record to reflect an empty/new project
+        by setting 'file_count'=0, 'total_lines'=0, 'status'='new'.
+        """
         if not self.project_path_obj.is_dir():
-            return True # Non-existent or file path is considered empty
+            # If the directory doesn't exist at all, treat it as empty/new.
+            # Also update the project record accordingly.
+            record = self.get_project_record() or {}
+            if record.get("file_count", 0) != 0 or record.get("status") not in ["new", "empty"]:
+                record["file_count"] = 0
+                record["total_lines"] = 0
+                record["status"] = "new"
+                self.update_project_record(record)
+            return True
 
+        # Walk the directory, looking for code files
         for root, dirs, files in os.walk(self.project_path_obj, topdown=True):
             # Prune excluded directories
             dirs[:] = [d for d in dirs if d not in DEFAULT_EXCLUDES]
-            # Check root itself (relative path check)
+
             try:
                 rel_root = Path(root).relative_to(self.project_path_obj)
                 if any(part in DEFAULT_EXCLUDES for part in rel_root.parts):
-                    dirs[:] = [] # Don't descend further into excluded root
+                    # Skip descending further into excluded directories
+                    dirs[:] = []
                     continue
-            except ValueError: # Should not happen if walk starts within project_path
-                 continue
+            except ValueError:
+                # Should not happen if walk starts within project_path, but just in case
+                continue
 
             for file in files:
                 ext = os.path.splitext(file)[1]
                 if ext in CODE_EXTENSIONS:
-                    # Check if file path itself contains excluded parts
+                    # Check if file path itself is excluded
                     try:
                         full_path = Path(root) / file
                         rel_file_path = full_path.relative_to(self.project_path_obj)
                         if not any(part in DEFAULT_EXCLUDES for part in rel_file_path.parts):
-                            return False # Found at least one processable file
+                            # Found at least one valid code file => Not empty
+                            return False
                     except ValueError:
-                        continue # Should not happen
-        return True # No processable files found
+                        # Should not happen, but skip if we can't compute a relative path
+                        continue
+
+        # If we finish the loop, no code files were found. Update the record to reflect empty/new.
+        record = self.get_project_record() or {}
+        if record.get("file_count", 0) != 0 or record.get("status") not in ["new", "empty"]:
+            record["file_count"] = 0
+            record["total_lines"] = 0
+            record["status"] = "new"
+            self.update_project_record(record)
+
+        return True
 
 
     def get_summary_status(self):

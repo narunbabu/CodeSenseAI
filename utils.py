@@ -63,71 +63,67 @@ def backup_file(file_path, timestamp, backups_dir):
 
 
 def extract_json(trimmed_output):
-    from bs4 import BeautifulSoup
-    import re
     import json
-    
-    # First, check if we're dealing with HTML content
-    if "<" in trimmed_output and ">" in trimmed_output:
-        try:
-            soup = BeautifulSoup(trimmed_output, 'html.parser')
-            
-            # Look for code blocks in HTML
-            code_blocks = soup.find_all('code')
-            if len(code_blocks) > 0:
-                # Check if it's JSON
-                try:
-                    return json.loads(code_blocks[-1].get_text())
-                except json.JSONDecodeError:
-                    # Check if it's LaTeX
-                    latex_text = code_blocks[-1].get_text()
-                    if latex_text.strip().startswith('\\') or '\\begin{' in latex_text:
-                        return {"latex": latex_text}
-                    # If neither JSON nor LaTeX, continue to other parsing methods
-            
-            # Get the text content from HTML
-            response = soup.get_text(separator="\n", strip=True)
-        except Exception:
-            # If HTML parsing fails, use the original content
-            response = trimmed_output
-    else:
-        response = trimmed_output
-    
-    # Handle code blocks with backticks (```)
-    if response.startswith("```"):
-        lines = response.splitlines()
-        # Remove the first line if it starts with ``` (and any language hint)
+    import re
+    from bs4 import BeautifulSoup
+
+    # First, if the response is enclosed in triple backticks, remove them
+    stripped = trimmed_output.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        # Remove the first line if it starts with ``` (and optional language hint)
         if lines[0].startswith("```"):
             lines = lines[1:]
-        # Remove the last line if it ends with ```
+        # Remove the last line if it starts with ```
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
-        response = "\n".join(lines).strip()
-    
-    # Try to parse as JSON directly
+        stripped = "\n".join(lines).strip()
+
+    # Try to parse directly as JSON
     try:
-        result = json.loads(response)
-        return result
+        return json.loads(stripped)
     except json.JSONDecodeError:
-        # Try to find JSON in the response
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        pass
+
+    # If not valid JSON, and the text looks like HTML, try to process it as HTML.
+    if "<" in stripped and ">" in stripped:
+        try:
+            soup = BeautifulSoup(stripped, 'html.parser')
+            # Look for code blocks in HTML
+            code_blocks = soup.find_all('code')
+            if code_blocks:
+                candidate = code_blocks[-1].get_text()
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+            # Fallback: get all text from HTML
+            stripped = soup.get_text(separator="\n", strip=True)
+        except Exception:
+            pass
+
+    # Try again to parse JSON directly
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        # As a last resort, use regex to extract JSON-like content
+        json_match = re.search(r'\{.*\}', stripped, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group())
             except json.JSONDecodeError:
                 pass
-        
-        # Try to find LaTeX in the response
-        latex_patterns = [
-            r'\\begin\{.*?\}.*?\\end\{.*?\}',  # For environments
-            r'\$\$(.*?)\$\$',                  # For display math
-            r'\$(.*?)\$'                       # For inline math
-        ]
-        
-        for pattern in latex_patterns:
-            latex_match = re.search(pattern, response, re.DOTALL)
-            if latex_match:
-                return {"latex": latex_match.group()}
-    
-    # If we couldn't find valid JSON or LaTeX, return the text response
-    return {"result": response}
+
+    # If no valid JSON is found, check for LaTeX patterns
+    latex_patterns = [
+        r'\\begin\{.*?\}.*?\\end\{.*?\}',
+        r'\$\$(.*?)\$\$',
+        r'\$(.*?)\$'
+    ]
+    for pattern in latex_patterns:
+        latex_match = re.search(pattern, stripped, re.DOTALL)
+        if latex_match:
+            return {"latex": latex_match.group()}
+
+    # If all parsing fails, return the raw text wrapped in a dict
+    return {"result": stripped}
